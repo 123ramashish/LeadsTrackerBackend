@@ -119,7 +119,6 @@ const AcceptanceSchema = new Schema({
   status: Boolean
 }, { _id: false });
 
-// ----- Main Task Schema -----
 const TaskSchema = new Schema({
   taskTitle: {
     type: String,

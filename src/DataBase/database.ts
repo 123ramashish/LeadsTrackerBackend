@@ -2,7 +2,6 @@ import * as dotenv from 'dotenv'
 dotenv.config()
 import mongoose from "mongoose"
 const URI = process.env.MONGODB_URI;
-console.log("URI", URI);
 const connectDB = async () => {
     try {
         if (!URI) {
