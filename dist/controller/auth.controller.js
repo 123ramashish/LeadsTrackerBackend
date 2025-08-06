@@ -10,6 +10,7 @@ class AuthController {
     async loginWithEmail(req, res) {
         try {
             const { email, password } = req.body;
+            console.log(email, password);
             const user = await user_schema_1.default.findOne({ email });
             if (!user)
                 return res.status(401).json({ message: "User not found" });
@@ -61,6 +62,7 @@ class AuthController {
                 email: user.email,
                 phone: user.phone,
                 role: user.userRole,
+                company: user.company
             },
             accessToken,
             refreshToken,

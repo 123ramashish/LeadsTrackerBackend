@@ -112,7 +112,6 @@ const AcceptanceSchema = new mongoose_2.Schema({
     },
     status: Boolean
 }, { _id: false });
-// ----- Main Task Schema -----
 const TaskSchema = new mongoose_2.Schema({
     taskTitle: {
         type: String,
@@ -156,22 +155,26 @@ const TaskSchema = new mongoose_2.Schema({
         default: null
     },
     dueDate: [DueDateSchema],
-    startDate: Date,
-    endDate: Date,
+    startDate: [{ user: mongoose_2.Schema.Types.ObjectId, date: Date }],
+    endDate: [{ user: mongoose_2.Schema.Types.ObjectId, date: Date }],
     createdBy: {
         type: mongoose_2.Schema.Types.ObjectId,
         ref: 'User',
         required: true
     },
+    company: mongoose_2.Schema.Types.ObjectId,
     tags: [String],
     comments: [CommentSchema],
     approval: Boolean,
     time_spent: [TimeSpentSchema],
     notes: String,
-    individualBucket: {
-        type: Boolean,
-        default: false
-    },
+    individualBucket: [{
+            user: mongoose_2.Schema.Types.ObjectId,
+            individual: {
+                type: Boolean,
+                default: false
+            }
+        }],
     companyBucket: {
         type: Boolean,
         default: false

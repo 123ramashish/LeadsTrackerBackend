@@ -40,7 +40,6 @@ const dotenv = __importStar(require("dotenv"));
 dotenv.config();
 const mongoose_1 = __importDefault(require("mongoose"));
 const URI = process.env.MONGODB_URI;
-console.log("URI", URI);
 const connectDB = async () => {
     try {
         if (!URI) {
