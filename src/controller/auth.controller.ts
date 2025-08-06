@@ -7,7 +7,7 @@ export default class AuthController {
   async loginWithEmail(req: Request, res: Response) {
     try {
       const { email, password } = req.body;
-
+      console.log(email,password)
       const user: any = await User.findOne({ email });
       if (!user) return res.status(401).json({ message: "User not found" });
       console.log("User found:", user.email, email, password);
@@ -71,6 +71,7 @@ export default class AuthController {
         email: user.email,
         phone: user.phone,
         role: user.userRole,
+        company:user.company
       },
       accessToken,
       refreshToken,

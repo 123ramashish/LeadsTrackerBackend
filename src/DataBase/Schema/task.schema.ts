@@ -162,22 +162,26 @@ const TaskSchema = new Schema({
     default: null
   },
   dueDate: [DueDateSchema],
-  startDate: Date,
-  endDate: Date,
+  startDate: [{user:Schema.Types.ObjectId,date:Date}],
+  endDate:  [{user:Schema.Types.ObjectId,date:Date}],
   createdBy: {
     type: Schema.Types.ObjectId,
     ref: 'User',
     required: true
   },
+  company:Schema.Types.ObjectId,
   tags: [String],
   comments: [CommentSchema],
   approval: Boolean,
   time_spent: [TimeSpentSchema],
   notes: String,
-  individualBucket: {
+  individualBucket: [{
+    user:Schema.Types.ObjectId,
+    individual:{
     type: Boolean,
     default: false
-  },
+    }
+  }],
   companyBucket: {
     type: Boolean,
     default: false
