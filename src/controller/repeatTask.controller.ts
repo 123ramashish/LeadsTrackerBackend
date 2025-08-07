@@ -26,6 +26,7 @@ export default class RepeatTaskController {
   async createTask(req: AuthRequest, res: Response) {
     try {
       const body = req.body;
+      console.log("body",body)
       const userId = req.user?.sub;
       console.log("body", body);
       if (!userId) {
@@ -105,6 +106,7 @@ export default class RepeatTaskController {
         repeatDay: repeatDay,
         repeatMonthNumber: repeatMonthNumber,
         repeatDate: repeatDate,
+        divideTime:body.divideTime
       });
 
       const savedTask = await newTask.save();

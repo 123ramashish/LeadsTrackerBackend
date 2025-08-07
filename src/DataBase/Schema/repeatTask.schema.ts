@@ -224,6 +224,7 @@ const RepeatTaskSchema = new Schema(
     tags: [String],
     approval: Boolean,
     notes: String,
+    divideTime:Boolean,
     Accept: [AcceptanceSchema],
     repeatTaskId: [
       {

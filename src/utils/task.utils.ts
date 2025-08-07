@@ -25,7 +25,10 @@ export const createTaskFromRepeat = async (repeatTask: any) => {
   const totalValue = Number(repeatTask.estimatedTime.value);
   const unit = repeatTask.estimatedTime.unit;
 
-  const perUserValue = Math.floor(totalValue / assignees.length);
+  const perUserValue = repeatTask.divideTime
+  ? parseFloat((totalValue / assignees.length).toFixed(2))
+  : Number(repeatTask.estimatedTime.value);
+
   const userEstimatedTime = assignees.map((userId) => ({
     user: userId,
     estimatedTime: { unit, value: perUserValue },

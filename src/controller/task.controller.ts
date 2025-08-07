@@ -14,12 +14,11 @@ export default class TaskController {
   // ✅ Create Task
   async createTask(req: AuthRequest, res: Response) {
     try {
-      const user=req.user
-     if (!user) {
-      return res.status(401).json({ message: "Unauthorized: No user data" });
-    }
+      const user = req.user;
+      if (!user) {
+        return res.status(401).json({ message: "Unauthorized: No user data" });
+      }
       const body = req.body;
-      
       // ✅ Validate required fields
       if (
         !body.taskTitle ||
@@ -51,7 +50,9 @@ export default class TaskController {
       }
 
       // ✅ Calculate estimated time per user
-      const perUserValue = Math.floor(totalValue / body.assignee.length);
+      const perUserValue = body.divide
+        ? parseFloat((totalValue / body.assignee.length).toFixed(2))
+        : Number(body.estimatedTime.value);
       const userEstimatedTime = body.assignee.map((userId: string) => ({
         user: userId,
         estimatedTime: { unit, value: perUserValue },
@@ -86,7 +87,9 @@ export default class TaskController {
       // ✅ Bucket logic
       let individualBucket: any[] = [];
       let companyBucket = false;
-
+      if (startDate > new Date() && !body.bucket) {
+        body.bucket = "individual";
+      }
       if (body.bucket === "individual") {
         individualBucket = body.assignee.map((userId: string) => ({
           user: userId,
@@ -141,7 +144,7 @@ export default class TaskController {
       return res.status(500).json({ message: error.message });
     }
   }
-async getAllTask(req: Request, res: Response) {
+  async getAllTask(req: Request, res: Response) {
     try {
       const {
         status,
@@ -153,7 +156,7 @@ async getAllTask(req: Request, res: Response) {
         limit = "10",
         skip = "0",
         sortBy = "createdAt",
-        order = "desc"
+        order = "desc",
       } = req.query as {
         status?: string;
         priority?: string;
@@ -201,46 +204,43 @@ async getAllTask(req: Request, res: Response) {
       return res.status(200).json({
         total,
         count: tasks.length,
-        tasks
+        tasks,
       });
     } catch (error: any) {
       console.error("Error getting tasks:", error.message);
-      return res.status(500).json({ message: "Failed to fetch tasks", error: error.message });
+      return res
+        .status(500)
+        .json({ message: "Failed to fetch tasks", error: error.message });
     }
   }
 
   async getTaskAmountTime(req: Request, res: Response) {
     try {
-      const { assignee, company } = req.params;
+      const { assignee, company } = req.query as {
+        assignee?: string;
+        company?: string;
+      };
 
       if (!company) {
         return res.status(400).json({ message: "Company ID is required" });
       }
 
-      // Parse assignee param to array (if it's passed)
-      const assigneeIds: string[] = assignee
-        ? JSON.parse(assignee)
-        : [];
+      const assigneeIds: string[] = assignee ? JSON.parse(assignee) : [];
 
-      // If no assignee, get all users of the company
-      let userList;
-      if (assigneeIds.length === 0) {
-        userList = await User.find({ company }, "_id name phone");
-      } else {
-        userList = await User.find(
-          { _id: { $in: assigneeIds } },
-          "_id name phone"
-        );
-      }
+      const userList =
+        assigneeIds.length === 0
+          ? await User.find({ company }, "_id name phone")
+          : await User.find(
+              { _id: { $in: assigneeIds }, company },
+              "_id name phone"
+            );
 
-      // Create a map to store total estimated time per user
       const results = [];
 
       for (const user of userList) {
-        // Get tasks where this user is in assignee array
         const tasks = await Task.find({
           company,
-          assignee: user._id
+          assignee: user._id,
         });
 
         let totalMinutes = 0;
@@ -259,7 +259,6 @@ async getAllTask(req: Request, res: Response) {
           }
         }
 
-        // Convert total minutes to days, hours, minutes
         const days = Math.floor(totalMinutes / 1440);
         const hours = Math.floor((totalMinutes % 1440) / 60);
         const minutes = totalMinutes % 60;
@@ -268,19 +267,16 @@ async getAllTask(req: Request, res: Response) {
           userId: user._id,
           name: user.name,
           phone: user.phone,
-          totalAmount: {
-            days,
-            hours,
-            minutes,
-          },
+          totalAmount: { days, hours, minutes },
         });
       }
 
       return res.status(200).json({ count: results.length, results });
-
     } catch (error: any) {
       console.error("Error calculating task time:", error.message);
-      return res.status(500).json({ message: "Internal Server Error", error: error.message });
+      return res
+        .status(500)
+        .json({ message: "Internal Server Error", error: error.message });
     }
   }
 
@@ -333,27 +329,27 @@ async getAllTask(req: Request, res: Response) {
         completed: 5,
       };
 
-     const userTasks = tasks
-  .map((task) => {
-    const userStatusObj = task.status.find(
-      (s: any) => s.user.toString() === userId
-    );
-    
-    const currentStatus = userStatusObj?.status ?? "assignee";
+      const userTasks = tasks
+        .map((task) => {
+          const userStatusObj = task.status.find(
+            (s: any) => s.user.toString() === userId
+          );
 
-    const sortValue = statusOrder[currentStatus as keyof typeof statusOrder] ?? 99;
+          const currentStatus = userStatusObj?.status ?? "assignee";
 
-    return {
-      ...task,
-      userStatus: currentStatus,
-      sortValue,
-    };
-  })
-  .filter((task) => {
-    if (status) return task.userStatus === status;
-    return true;
-  });
+          const sortValue =
+            statusOrder[currentStatus as keyof typeof statusOrder] ?? 99;
 
+          return {
+            ...task,
+            userStatus: currentStatus,
+            sortValue,
+          };
+        })
+        .filter((task) => {
+          if (status) return task.userStatus === status;
+          return true;
+        });
 
       // Step 4: Sort by status and apply pagination
       const sortedTasks = userTasks
@@ -367,10 +363,11 @@ async getAllTask(req: Request, res: Response) {
           userStatus,
         })),
       });
-
     } catch (error: any) {
       console.error("Error getting tasks by user ID:", error.message);
-      return res.status(500).json({ message: "Internal Server Error", error: error.message });
+      return res
+        .status(500)
+        .json({ message: "Internal Server Error", error: error.message });
     }
   }
   // ✅ Utility: Get local timezone
