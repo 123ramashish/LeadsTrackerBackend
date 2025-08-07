@@ -15,7 +15,7 @@ const EstimatedTimeSchema = new mongoose_2.Schema({
     value: {
         type: Number,
         required: true,
-        min: 1
+        min: 0
     }
 }, { _id: false });
 // StatusHistoryEntry Sub-schema

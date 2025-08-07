@@ -141,7 +141,238 @@ export default class TaskController {
       return res.status(500).json({ message: error.message });
     }
   }
+async getAllTask(req: Request, res: Response) {
+    try {
+      const {
+        status,
+        priority,
+        assignee,
+        createdBy,
+        company,
+        search,
+        limit = "10",
+        skip = "0",
+        sortBy = "createdAt",
+        order = "desc"
+      } = req.query as {
+        status?: string;
+        priority?: string;
+        assignee?: string;
+        createdBy?: string;
+        company?: string;
+        search?: string;
+        limit?: string;
+        skip?: string;
+        sortBy?: string;
+        order?: string;
+      };
 
+      // Build the filter object
+      const filter: any = {};
+
+      if (status) filter["status.status"] = status;
+      if (priority) filter.priority = priority;
+      if (assignee) filter.assignee = assignee;
+      if (createdBy) filter.createdBy = createdBy;
+      if (company) filter.company = company;
+
+      // Optional text search on title or description
+      if (search) {
+        filter.$or = [
+          { taskTitle: { $regex: search, $options: "i" } },
+          { taskDescription: { $regex: search, $options: "i" } },
+        ];
+      }
+
+      // Sorting
+      const sort: any = {};
+      sort[sortBy] = order === "asc" ? 1 : -1;
+
+      // Fetch tasks from DB
+      const tasks = await Task.find(filter)
+        .sort(sort)
+        .skip(parseInt(skip))
+        .limit(parseInt(limit));
+
+      // Get total count for pagination
+      const total = await Task.countDocuments(filter);
+
+      // Return response
+      return res.status(200).json({
+        total,
+        count: tasks.length,
+        tasks
+      });
+    } catch (error: any) {
+      console.error("Error getting tasks:", error.message);
+      return res.status(500).json({ message: "Failed to fetch tasks", error: error.message });
+    }
+  }
+
+  async getTaskAmountTime(req: Request, res: Response) {
+    try {
+      const { assignee, company } = req.params;
+
+      if (!company) {
+        return res.status(400).json({ message: "Company ID is required" });
+      }
+
+      // Parse assignee param to array (if it's passed)
+      const assigneeIds: string[] = assignee
+        ? JSON.parse(assignee)
+        : [];
+
+      // If no assignee, get all users of the company
+      let userList;
+      if (assigneeIds.length === 0) {
+        userList = await User.find({ company }, "_id name phone");
+      } else {
+        userList = await User.find(
+          { _id: { $in: assigneeIds } },
+          "_id name phone"
+        );
+      }
+
+      // Create a map to store total estimated time per user
+      const results = [];
+
+      for (const user of userList) {
+        // Get tasks where this user is in assignee array
+        const tasks = await Task.find({
+          company,
+          assignee: user._id
+        });
+
+        let totalMinutes = 0;
+
+        for (const task of tasks) {
+          const userEstimate = task.userEstimatedTime.find(
+            (et: any) => et.user.toString() === user._id.toString()
+          );
+
+          if (userEstimate) {
+            const { unit, value } = userEstimate.estimatedTime;
+
+            if (unit === "Minutes") totalMinutes += value;
+            else if (unit === "Hours") totalMinutes += value * 60;
+            else if (unit === "Days") totalMinutes += value * 1440;
+          }
+        }
+
+        // Convert total minutes to days, hours, minutes
+        const days = Math.floor(totalMinutes / 1440);
+        const hours = Math.floor((totalMinutes % 1440) / 60);
+        const minutes = totalMinutes % 60;
+
+        results.push({
+          userId: user._id,
+          name: user.name,
+          phone: user.phone,
+          totalAmount: {
+            days,
+            hours,
+            minutes,
+          },
+        });
+      }
+
+      return res.status(200).json({ count: results.length, results });
+
+    } catch (error: any) {
+      console.error("Error calculating task time:", error.message);
+      return res.status(500).json({ message: "Internal Server Error", error: error.message });
+    }
+  }
+
+  async getTaskById(req: Request, res: Response) {
+    try {
+      const { userId } = req.params;
+      const {
+        limit = "10",
+        skip = "0",
+        status,
+        search,
+        taskDate,
+        priority,
+      } = req.query as {
+        limit?: string;
+        skip?: string;
+        status?: string;
+        search?: string;
+        taskDate?: string;
+        priority?: string;
+      };
+
+      if (!userId) {
+        return res.status(400).json({ message: "User ID is required" });
+      }
+
+      // Step 1: Build base query to find tasks where user is an assignee
+      const query: any = {
+        assignee: userId,
+      };
+
+      if (priority) query.priority = priority;
+      if (taskDate) query.taskDate = new Date(taskDate);
+      if (search) {
+        query.$or = [
+          { taskTitle: { $regex: search, $options: "i" } },
+          { taskDescription: { $regex: search, $options: "i" } },
+        ];
+      }
+
+      // Step 2: Get filtered tasks
+      const tasks = await Task.find(query).lean();
+
+      // Step 3: Filter user-specific statuses and apply custom sorting
+      const statusOrder = {
+        expired: 1,
+        pause: 2,
+        inprogress: 3,
+        assignee: 4,
+        completed: 5,
+      };
+
+     const userTasks = tasks
+  .map((task) => {
+    const userStatusObj = task.status.find(
+      (s: any) => s.user.toString() === userId
+    );
+    
+    const currentStatus = userStatusObj?.status ?? "assignee";
+
+    const sortValue = statusOrder[currentStatus as keyof typeof statusOrder] ?? 99;
+
+    return {
+      ...task,
+      userStatus: currentStatus,
+      sortValue,
+    };
+  })
+  .filter((task) => {
+    if (status) return task.userStatus === status;
+    return true;
+  });
+
+
+      // Step 4: Sort by status and apply pagination
+      const sortedTasks = userTasks
+        .sort((a, b) => a.sortValue - b.sortValue)
+        .slice(parseInt(skip), parseInt(skip) + parseInt(limit));
+
+      return res.status(200).json({
+        count: sortedTasks.length,
+        tasks: sortedTasks.map(({ sortValue, userStatus, ...rest }) => ({
+          ...rest,
+          userStatus,
+        })),
+      });
+
+    } catch (error: any) {
+      console.error("Error getting tasks by user ID:", error.message);
+      return res.status(500).json({ message: "Internal Server Error", error: error.message });
+    }
+  }
   // ✅ Utility: Get local timezone
   private async getLocalTimeZone(): Promise<string> {
     return Intl.DateTimeFormat().resolvedOptions().timeZone;

@@ -7,6 +7,7 @@ export interface IRepeatGoal extends Document {
   startDate: Date;
   endDate?: Date;
   user: mongoose.Types.ObjectId;
+  repeatTime:Date;
   status?: "pending" | "in-progress" | "completed";
 }
 
@@ -28,9 +29,10 @@ const RepeatGoalSchema: Schema = new Schema<IRepeatGoal>(
     },
     repeatInterval: {
       type: String,
-      enum: ["daily", "weekly", "monthly", "annually"],
+      enum: ["daily", "weekly", "monthly", "quarterly","annually"],
       required: [true, "Repeat interval is required"],
     },
+    repeatTime:Date,
     startDate: {
       type: Date,
       required: [true, "Start date is required"],

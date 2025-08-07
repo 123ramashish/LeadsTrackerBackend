@@ -12,7 +12,7 @@ const EstimatedTimeSchema = new Schema({
   value: {
     type: Number,
     required: true,
-    min: 1
+    min: 0
   }
 }, { _id: false });
 
