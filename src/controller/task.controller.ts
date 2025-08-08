@@ -116,6 +116,8 @@ export default class TaskController {
         taskDescription: body.taskDescription,
         taskDate: startDate,
         estimatedTime: { unit, value: totalValue },
+        entryTime: body.entryTime,
+        noOfEntry:body.noOfEntry,
         assignee: body.assignee,
         userEstimatedTime,
         priority: body.priority,
@@ -169,7 +171,7 @@ export default class TaskController {
         sortBy?: string;
         order?: string;
       };
-
+console.log("api call")
       // Build the filter object
       const filter: any = {};
 
@@ -280,96 +282,95 @@ export default class TaskController {
     }
   }
 
-  async getTaskById(req: Request, res: Response) {
-    try {
-      const { userId } = req.params;
-      const {
-        limit = "10",
-        skip = "0",
-        status,
-        search,
-        taskDate,
-        priority,
-      } = req.query as {
-        limit?: string;
-        skip?: string;
-        status?: string;
-        search?: string;
-        taskDate?: string;
-        priority?: string;
-      };
+ async getTaskById(req: Request, res: Response) {
+  try {
+    const { userId } = req.params;
+    const {
+      limit = "10",
+      skip = "0",
+      status,
+      search,
+      taskDate,
+      priority,
+    } = req.query as {
+      limit?: string;
+      skip?: string;
+      status?: string;
+      search?: string;
+      taskDate?: string;
+      priority?: string;
+    };
 
-      if (!userId) {
-        return res.status(400).json({ message: "User ID is required" });
-      }
-
-      // Step 1: Build base query to find tasks where user is an assignee
-      const query: any = {
-        assignee: userId,
-      };
-
-      if (priority) query.priority = priority;
-      if (taskDate) query.taskDate = new Date(taskDate);
-      if (search) {
-        query.$or = [
-          { taskTitle: { $regex: search, $options: "i" } },
-          { taskDescription: { $regex: search, $options: "i" } },
-        ];
-      }
-
-      // Step 2: Get filtered tasks
-      const tasks = await Task.find(query).lean();
-
-      // Step 3: Filter user-specific statuses and apply custom sorting
-      const statusOrder = {
-        expired: 1,
-        pause: 2,
-        inprogress: 3,
-        assignee: 4,
-        completed: 5,
-      };
-
-      const userTasks = tasks
-        .map((task) => {
-          const userStatusObj = task.status.find(
-            (s: any) => s.user.toString() === userId
-          );
-
-          const currentStatus = userStatusObj?.status ?? "assignee";
-
-          const sortValue =
-            statusOrder[currentStatus as keyof typeof statusOrder] ?? 99;
-
-          return {
-            ...task,
-            userStatus: currentStatus,
-            sortValue,
-          };
-        })
-        .filter((task) => {
-          if (status) return task.userStatus === status;
-          return true;
-        });
-
-      // Step 4: Sort by status and apply pagination
-      const sortedTasks = userTasks
-        .sort((a, b) => a.sortValue - b.sortValue)
-        .slice(parseInt(skip), parseInt(skip) + parseInt(limit));
-
-      return res.status(200).json({
-        count: sortedTasks.length,
-        tasks: sortedTasks.map(({ sortValue, userStatus, ...rest }) => ({
-          ...rest,
-          userStatus,
-        })),
-      });
-    } catch (error: any) {
-      console.error("Error getting tasks by user ID:", error.message);
-      return res
-        .status(500)
-        .json({ message: "Internal Server Error", error: error.message });
+    if (!userId) {
+      return res.status(400).json({ message: "User ID is required" });
     }
+
+    // Step 1: Build base query
+    const query: any = { assignee: userId };
+
+    if (priority) query.priority = priority;
+    if (taskDate) query.taskDate = new Date(taskDate);
+    if (search) {
+      query.$or = [
+        { taskTitle: { $regex: search, $options: "i" } },
+        { taskDescription: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    // Step 2: Find and populate
+    const tasks = await Task.find(query)
+  .populate("assignee", "_id name role")
+  .populate("userEstimatedTime.user", "_id name role")
+  .populate("status.user", "_id name role")
+  .populate("dueDate.user", "_id name role")
+  .populate("startDate.user", "_id name role")
+  .populate("endDate.user", "_id name role")
+  .populate("createdBy", "_id name role")
+  .populate("company", "_id name role")
+  .lean();
+
+    // Step 3: Process status per user
+    const statusOrder: Record<string, number> = {
+      expired: 1,
+      pause: 2,
+      inprogress: 3,
+      assignee: 4,
+      completed: 5,
+    };
+
+    const userTasks = tasks
+      .map((task) => {
+        const userStatusObj = task.status.find(
+          (s: any) => s.user?._id?.toString() === userId // ✅ after populate, s.user is an object
+        );
+
+        const currentStatus = userStatusObj?.status ?? "assignee";
+        const sortValue = statusOrder[currentStatus] ?? 99;
+
+        return { ...task, userStatus: currentStatus, sortValue };
+      })
+      .filter((task) => !status || task.userStatus === status);
+
+    // Step 4: Sort & paginate
+    const sortedTasks = userTasks
+      .sort((a, b) => a.sortValue - b.sortValue)
+      .slice(parseInt(skip), parseInt(skip) + parseInt(limit));
+
+    return res.status(200).json({
+      count: sortedTasks.length,
+      tasks: sortedTasks.map(({ sortValue, userStatus, ...rest }) => ({
+        ...rest,
+        userStatus,
+      })),
+    });
+  } catch (error: any) {
+    console.error("Error getting tasks by user ID:", error.message);
+    return res
+      .status(500)
+      .json({ message: "Internal Server Error", error: error.message });
   }
+}
+
   // ✅ Utility: Get local timezone
   private async getLocalTimeZone(): Promise<string> {
     return Intl.DateTimeFormat().resolvedOptions().timeZone;

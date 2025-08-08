@@ -91,6 +91,8 @@ export default class RepeatTaskController {
         taskDate: localTaskDate,
         taskDescription: body.taskDescription,
         estimatedTime: body.estimatedTime,
+        entryTime: body.entryTime,
+        noOfEntry:body.noOfEntry,
         assignee: assigneesToAssign,
         priority: body.priority,
         location: body.location,

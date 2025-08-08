@@ -27,7 +27,7 @@ const StatusHistoryEntrySchema = new Schema({
     default: Date.now
   },
   changedBy: {
-    type: Schema.Types.ObjectId,
+    type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   },
   address: String
@@ -36,7 +36,7 @@ const StatusHistoryEntrySchema = new Schema({
 // Comment Sub-schema
 const CommentSchema = new Schema({
   createdBy: {
-    type: Schema.Types.ObjectId,
+    type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   },
   createdAt: Date,
@@ -48,7 +48,7 @@ const CommentSchema = new Schema({
 // TimeSpent Sub-schema
 const TimeSpentSchema = new Schema({
   user: {
-    type: Schema.Types.ObjectId,
+    type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   },
   time: [Number]  // Array of time entries in minutes
@@ -57,7 +57,7 @@ const TimeSpentSchema = new Schema({
 // UserEstimatedTime Sub-schema
 const UserEstimatedTimeSchema = new Schema({
   user: {
-    type: Schema.Types.ObjectId,
+    type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   },
   estimatedTime: {
@@ -69,7 +69,7 @@ const UserEstimatedTimeSchema = new Schema({
 // ActionEvent Sub-schema
 const ActionEventSchema = new Schema({
   user: {
-    type: Schema.Types.ObjectId,
+    type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   },
   actionOn: String,
@@ -82,7 +82,7 @@ const ActionEventSchema = new Schema({
 // Evaluation Sub-schema (for reward/punishment)
 const EvaluationSchema = new Schema({
   user: {
-    type: Schema.Types.ObjectId,
+    type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   },
   type: {
@@ -95,7 +95,7 @@ const EvaluationSchema = new Schema({
 // Status Sub-schema (per user status)
 const UserStatusSchema = new Schema({
   user: {
-    type: Schema.Types.ObjectId,
+    type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   },
   status: String
@@ -104,7 +104,7 @@ const UserStatusSchema = new Schema({
 // DueDate Sub-schema (user-specific due dates)
 const DueDateSchema = new Schema({
   user: {
-    type: Schema.Types.ObjectId,
+    type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   },
   date: [Date]  // Array of dates for the user
@@ -113,7 +113,7 @@ const DueDateSchema = new Schema({
 // Acceptance Sub-schema (task acceptance tracking)
 const AcceptanceSchema = new Schema({
   user: {
-    type: Schema.Types.ObjectId,
+    type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   },
   status: Boolean
@@ -138,8 +138,14 @@ const TaskSchema = new Schema({
     type: EstimatedTimeSchema,
     required: true
   },
+  entryTime: {
+    type: EstimatedTimeSchema,
+    required: true
+  },
+  noOfEntry:Number,
+  entryDone:Number,
   assignee: [{
-    type: Schema.Types.ObjectId,
+    type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   }],
   userEstimatedTime: [UserEstimatedTimeSchema],
@@ -162,21 +168,21 @@ const TaskSchema = new Schema({
     default: null
   },
   dueDate: [DueDateSchema],
-  startDate: [{user:Schema.Types.ObjectId,date:Date}],
-  endDate:  [{user:Schema.Types.ObjectId,date:Date}],
+  startDate: [{user:mongoose.Schema.Types.ObjectId,date:Date}],
+  endDate:  [{user:mongoose.Schema.Types.ObjectId,date:Date}],
   createdBy: {
-    type: Schema.Types.ObjectId,
+    type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: true
   },
-  company:Schema.Types.ObjectId,
+  company:mongoose.Schema.Types.ObjectId,
   tags: [String],
   comments: [CommentSchema],
   approval: Boolean,
   time_spent: [TimeSpentSchema],
   notes: String,
   individualBucket: [{
-    user:Schema.Types.ObjectId,
+    user:mongoose.Schema.Types.ObjectId,
     individual:{
     type: Boolean,
     default: false
@@ -189,7 +195,7 @@ const TaskSchema = new Schema({
   taskType: String,
   Accept: [AcceptanceSchema],
   repeatTaskId: {
-    type: Schema.Types.ObjectId,
+    type: mongoose.Schema.Types.ObjectId,
     ref: 'RepeatingTask'
   },
   actionEvents: [ActionEventSchema]

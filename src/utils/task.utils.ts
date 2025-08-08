@@ -1,8 +1,8 @@
-import Task from '../DataBase/Schema/task.schema';
-import RepeatTask from '../DataBase/Schema/repeatTask.schema';
-import User from '../DataBase/Schema/user.schema';
-import { DateTime } from 'luxon';
-import mongoose from 'mongoose';
+import Task from "../DataBase/Schema/task.schema";
+import RepeatTask from "../DataBase/Schema/repeatTask.schema";
+import User from "../DataBase/Schema/user.schema";
+import { DateTime } from "luxon";
+import mongoose from "mongoose";
 
 const getLocalTimeZone = async (): Promise<string> => {
   return Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -10,7 +10,15 @@ const getLocalTimeZone = async (): Promise<string> => {
 
 export const createTaskFromRepeat = async (repeatTask: any) => {
   // Validate necessary fields
-  if (!repeatTask.taskTitle || !repeatTask.taskDate || !repeatTask.dueDate || !repeatTask.priority || !repeatTask.location || !repeatTask.estimatedTime || !repeatTask.company) {
+  if (
+    !repeatTask.taskTitle ||
+    !repeatTask.taskDate ||
+    !repeatTask.dueDate ||
+    !repeatTask.priority ||
+    !repeatTask.location ||
+    !repeatTask.estimatedTime ||
+    !repeatTask.company
+  ) {
     throw new Error("Repeat task missing required fields");
   }
 
@@ -26,8 +34,8 @@ export const createTaskFromRepeat = async (repeatTask: any) => {
   const unit = repeatTask.estimatedTime.unit;
 
   const perUserValue = repeatTask.divideTime
-  ? parseFloat((totalValue / assignees.length).toFixed(2))
-  : Number(repeatTask.estimatedTime.value);
+    ? parseFloat((totalValue / assignees.length).toFixed(2))
+    : Number(repeatTask.estimatedTime.value);
 
   const userEstimatedTime = assignees.map((userId) => ({
     user: userId,
@@ -72,6 +80,8 @@ export const createTaskFromRepeat = async (repeatTask: any) => {
     taskDescription: repeatTask.taskDescription || "",
     taskDate: startDate,
     estimatedTime: { unit, value: totalValue },
+    entryTime: repeatTask.entryTime,
+    noOfEntry: repeatTask.noOfEntry,
     assignee: assignees,
     userEstimatedTime,
     priority: repeatTask.priority,

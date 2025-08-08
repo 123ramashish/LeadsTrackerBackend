@@ -96,7 +96,6 @@ export default class UserController {
         .lean();
       // ✅ Total count for pagination
       const total = await User.countDocuments(query);
-
       return res.status(200).json({
         users,
         pagination: {

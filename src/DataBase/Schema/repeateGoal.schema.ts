@@ -42,7 +42,7 @@ const RepeatGoalSchema: Schema = new Schema<IRepeatGoal>(
       required: [true, "Target date is required"],
     },
     user: {
-      type: Schema.Types.ObjectId,
+      type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: [true, "User is required"],
     },

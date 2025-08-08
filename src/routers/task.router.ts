@@ -9,7 +9,7 @@ taskRouter.post("/create",authenticate,taskController.createTask.bind(taskContro
 // Future endpoints
 taskRouter.get("/", taskController.getAllTask);
 taskRouter.get("/totalTaskAmountTime", taskController.getTaskAmountTime);
-taskRouter.get("/:id", taskController.getTaskById);
+taskRouter.get("/:userId", taskController.getTaskById);
 // taskRouter.put("/:id",  taskController.updateTask);
 // taskRouter.delete("/:id",  taskController.deleteTask);
 
