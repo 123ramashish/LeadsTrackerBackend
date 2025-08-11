@@ -5,6 +5,7 @@ import authRouter from "./auth.router";
 import taskRouter from "./task.router";
 import goalRouter from "./goal.router";
 import repeatTaskRouter from "./repeatTask.router";
+import fileRouter from "./file.router";
 
 const router = Router();
 
@@ -14,6 +15,7 @@ router.use("/auth", authRouter);
 router.use("/task", taskRouter);
 router.use("/repeatTask", repeatTaskRouter);
 router.use("/goal", goalRouter);
+router.use("/file", fileRouter);
 router.use("/", (req, res) => {
   res.status(200).json({ message: "Welcome to the Task Management API" });
 });

@@ -80,7 +80,6 @@ export const createTaskFromRepeat = async (repeatTask: any) => {
     taskDescription: repeatTask.taskDescription || "",
     taskDate: startDate,
     estimatedTime: { unit, value: totalValue },
-    entryTime: repeatTask.entryTime,
     noOfEntry: repeatTask.noOfEntry,
     assignee: assignees,
     userEstimatedTime,

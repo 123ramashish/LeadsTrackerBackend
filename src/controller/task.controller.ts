@@ -59,7 +59,7 @@ export default class TaskController {
       }));
 
       // ✅ Get local timezone and convert dates
-      const localTimeZone = await this.getLocalTimeZone();
+      const localTimeZone = DateTime.local().zoneName;
 
       const startDate = new Date(
         DateTime.fromISO(body.taskDate).setZone(localTimeZone).toISO()!
@@ -116,8 +116,7 @@ export default class TaskController {
         taskDescription: body.taskDescription,
         taskDate: startDate,
         estimatedTime: { unit, value: totalValue },
-        entryTime: body.entryTime,
-        noOfEntry:body.noOfEntry,
+        noOfEntry: body.noOfEntry,
         assignee: body.assignee,
         userEstimatedTime,
         priority: body.priority,
@@ -171,7 +170,7 @@ export default class TaskController {
         sortBy?: string;
         order?: string;
       };
-console.log("api call")
+      console.log("api call");
       // Build the filter object
       const filter: any = {};
 
@@ -282,94 +281,254 @@ console.log("api call")
     }
   }
 
- async getTaskById(req: Request, res: Response) {
-  try {
-    const { userId } = req.params;
-    const {
-      limit = "10",
-      skip = "0",
-      status,
-      search,
-      taskDate,
-      priority,
-    } = req.query as {
-      limit?: string;
-      skip?: string;
-      status?: string;
-      search?: string;
-      taskDate?: string;
-      priority?: string;
-    };
+  async getTaskById(req: Request, res: Response) {
+    try {
+      const { userId } = req.params;
+      const {
+        limit = "10",
+        skip = "0",
+        status,
+        search,
+        taskDate,
+        priority,
+      } = req.query as {
+        limit?: string;
+        skip?: string;
+        status?: string;
+        search?: string;
+        taskDate?: string;
+        priority?: string;
+      };
 
-    if (!userId) {
-      return res.status(400).json({ message: "User ID is required" });
+      if (!userId) {
+        return res.status(400).json({ message: "User ID is required" });
+      }
+
+      // Step 1: Build base query
+      const query: any = { assignee: userId };
+
+      if (priority) query.priority = priority;
+      if (taskDate) query.taskDate = new Date(taskDate);
+      if (search) {
+        query.$or = [
+          { taskTitle: { $regex: search, $options: "i" } },
+          { taskDescription: { $regex: search, $options: "i" } },
+        ];
+      }
+
+      // Step 2: Find and populate
+      const tasks = await Task.find(query)
+        .populate("assignee", "_id name role")
+        .populate("userEstimatedTime.user", "_id name role")
+        .populate("status.user", "_id name role")
+        .populate("dueDate.user", "_id name role")
+        .populate("startDate.user", "_id name role")
+        .populate("endDate.user", "_id name role")
+        .populate("createdBy", "_id name role")
+        .populate("company", "_id name role")
+        .lean();
+
+      // Step 3: Process status per user
+      const statusOrder: Record<string, number> = {
+        expired: 1,
+        pause: 2,
+        inprogress: 3,
+        assignee: 4,
+        completed: 5,
+      };
+
+      const userTasks = tasks
+        .map((task) => {
+          const userStatusObj = task.status.find(
+            (s: any) => s.user?._id?.toString() === userId // ✅ after populate, s.user is an object
+          );
+
+          const currentStatus = userStatusObj?.status ?? "assignee";
+          const sortValue = statusOrder[currentStatus] ?? 99;
+
+          return { ...task, userStatus: currentStatus, sortValue };
+        })
+        .filter((task) => !status || task.userStatus === status);
+
+      // Step 4: Sort & paginate
+      const sortedTasks = userTasks
+        .sort((a, b) => a.sortValue - b.sortValue)
+        .slice(parseInt(skip), parseInt(skip) + parseInt(limit));
+
+      return res.status(200).json({
+        count: sortedTasks.length,
+        tasks: sortedTasks.map(({ sortValue, userStatus, ...rest }) => ({
+          ...rest,
+          userStatus,
+        })),
+      });
+    } catch (error: any) {
+      console.error("Error getting tasks by user ID:", error.message);
+      return res
+        .status(500)
+        .json({ message: "Internal Server Error", error: error.message });
     }
+  }
 
-    // Step 1: Build base query
-    const query: any = { assignee: userId };
+  async updateTaskStatus(req: AuthRequest, res: Response) {
+    try {
+      const { id, company, status, loginUser, address } = req.body;
 
-    if (priority) query.priority = priority;
-    if (taskDate) query.taskDate = new Date(taskDate);
-    if (search) {
-      query.$or = [
-        { taskTitle: { $regex: search, $options: "i" } },
-        { taskDescription: { $regex: search, $options: "i" } },
-      ];
-    }
+      const task = await Task.findOne({
+        _id: new mongoose.Types.ObjectId(id),
+        company: new mongoose.Types.ObjectId(company),
+      });
 
-    // Step 2: Find and populate
-    const tasks = await Task.find(query)
-  .populate("assignee", "_id name role")
-  .populate("userEstimatedTime.user", "_id name role")
-  .populate("status.user", "_id name role")
-  .populate("dueDate.user", "_id name role")
-  .populate("startDate.user", "_id name role")
-  .populate("endDate.user", "_id name role")
-  .populate("createdBy", "_id name role")
-  .populate("company", "_id name role")
-  .lean();
+      if (!task) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+      const localTimeZone = DateTime.local().zoneName;
 
-    // Step 3: Process status per user
-    const statusOrder: Record<string, number> = {
-      expired: 1,
-      pause: 2,
-      inprogress: 3,
-      assignee: 4,
-      completed: 5,
-    };
+      const userId = new mongoose.Types.ObjectId(loginUser.id);
 
-    const userTasks = tasks
-      .map((task) => {
-        const userStatusObj = task.status.find(
-          (s: any) => s.user?._id?.toString() === userId // ✅ after populate, s.user is an object
+      // Get the latest status history for this user
+      const userHistory = task.statusHistory
+        .filter(
+          (entry: any) => entry.changedBy.toString() === userId.toString()
+        )
+        .sort(
+          (a: any, b: any) =>
+            new Date(b.changedAt).getTime() - new Date(a.changedAt).getTime()
         );
 
-        const currentStatus = userStatusObj?.status ?? "assignee";
-        const sortValue = statusOrder[currentStatus] ?? 99;
+      const latestHistory = userHistory[0];
 
-        return { ...task, userStatus: currentStatus, sortValue };
-      })
-      .filter((task) => !status || task.userStatus === status);
+      // If latest status is "in progress" → calculate spent time
+      if (latestHistory && latestHistory.status === "in progress") {
+        const now = DateTime.now().setZone(localTimeZone);
+        const minutesSpent = Math.floor(
+          (now.toMillis() -
+            DateTime.fromJSDate(latestHistory.changedAt)
+              .setZone(localTimeZone)
+              .toMillis()) /
+            60000
+        );
 
-    // Step 4: Sort & paginate
-    const sortedTasks = userTasks
-      .sort((a, b) => a.sortValue - b.sortValue)
-      .slice(parseInt(skip), parseInt(skip) + parseInt(limit));
+        // Update time_spent for this user
+        let timeEntry = task.time_spent.find(
+          (t: any) => t.user.toString() === userId.toString()
+        );
+        if (timeEntry) {
+          timeEntry.time.push(minutesSpent);
+        } else {
+          task.time_spent.push({ user: userId, time: [minutesSpent] });
+        }
+      }
 
-    return res.status(200).json({
-      count: sortedTasks.length,
-      tasks: sortedTasks.map(({ sortValue, userStatus, ...rest }) => ({
-        ...rest,
-        userStatus,
-      })),
-    });
-  } catch (error: any) {
-    console.error("Error getting tasks by user ID:", error.message);
-    return res
-      .status(500)
-      .json({ message: "Internal Server Error", error: error.message });
+      // Update the user's current status in task.status
+      let statusEntry = task.status.find(
+        (s: any) => s.user.toString() === userId.toString()
+      );
+      if (statusEntry) {
+        statusEntry.status = status;
+      } else {
+        task.status.push({ user: userId, status });
+      }
+
+      // Push new entry into statusHistory
+      task.statusHistory.push({
+        status,
+        changedAt: DateTime.now().setZone(localTimeZone).toISO(),
+        changedBy: userId,
+        address: address || null,
+      });
+
+      await task.save();
+
+      return res.status(200).json({
+        message: "Task status updated successfully",
+        task,
+      });
+    } catch (error: any) {
+      console.error("Error updating task status:", error.message);
+      return res.status(500).json({
+        message: "Internal Server Error",
+        error: error.message,
+      });
+    }
   }
-}
+
+  // ✅ Add a new comment to a task
+  async addTaskMessage(req: Request, res: Response) {
+    try {
+      const { message, files, address, taskId, company, userId } = req.body;
+      console.log("body", req.body);
+      if (!message || !taskId || !company || !userId) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+      const localTimeZone = DateTime.local().zoneName;
+
+      const task = await Task.findOne({ _id: taskId, company });
+      if (!task) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+
+      const newComment = {
+        createdBy: new mongoose.Types.ObjectId(userId),
+        createdAt: DateTime.now().setZone(localTimeZone),
+        message,
+        files: files || [],
+        workingLocation: address || "",
+      };
+
+      task.comments.push(newComment);
+      await task.save();
+
+      return res.status(201).json({
+        message: "Comment added successfully",
+        comment: newComment,
+      });
+    } catch (error: any) {
+      console.error("Error adding task comment:", error.message);
+      return res.status(500).json({
+        message: "Internal Server Error",
+        error: error.message,
+      });
+    }
+  }
+
+  async getTaskMessages(req: Request, res: Response) {
+    try {
+      const { id, company } = req.query as { id?: string; company?: string };
+      console.log("Incoming query params:", id, company);
+
+      if (!id || !company) {
+        return res.status(400).json({ message: "Missing task ID or company" });
+      }
+
+      // Validate ObjectId format
+      if (
+        !mongoose.Types.ObjectId.isValid(id) ||
+        !mongoose.Types.ObjectId.isValid(company)
+      ) {
+        return res
+          .status(400)
+          .json({ message: "Invalid task ID or company ID" });
+      }
+
+      const task = await Task.findOne({
+        _id: new mongoose.Types.ObjectId(id),
+        company: new mongoose.Types.ObjectId(company),
+      }).populate("comments.createdBy", "name email");
+
+      if (!task) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+
+      return res.status(200).json(task.comments);
+    } catch (error: any) {
+      console.error("Error getting task comments:", error.message);
+      return res.status(500).json({
+        message: "Internal Server Error",
+        error: error.message,
+      });
+    }
+  }
 
   // ✅ Utility: Get local timezone
   private async getLocalTimeZone(): Promise<string> {
