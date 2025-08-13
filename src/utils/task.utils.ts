@@ -81,6 +81,7 @@ export const createTaskFromRepeat = async (repeatTask: any) => {
     taskDate: startDate,
     estimatedTime: { unit, value: totalValue },
     noOfEntry: repeatTask.noOfEntry,
+    entryTime: repeatTask.entryTime,
     assignee: assignees,
     userEstimatedTime,
     priority: repeatTask.priority,

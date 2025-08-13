@@ -181,7 +181,17 @@ const RepeatTaskSchema = new Schema(
       value: {
         type: Number,
         required: true,
-        min: 1,
+        min: 0,
+      },
+    },
+    entryTime: {
+      unit: {
+        type: String,
+        enum: ["Minutes", "Hours", "Days"],
+      },
+      value: {
+        type: Number,
+        min: 0,
       },
     },
    

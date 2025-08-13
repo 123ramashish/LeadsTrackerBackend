@@ -78,7 +78,7 @@ export default class UserController {
   static async getUsers(req: Request, res: Response) {
     try {
       const { role, page = 1, limit = 10, company } = req.query;
-
+      console.log("com", company);
       // ✅ Build query
       const query: any = { isDelete: false };
       if (role) query.userRole = role;

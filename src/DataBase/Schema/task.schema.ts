@@ -7,7 +7,6 @@ const EstimatedTimeSchema = new Schema(
     unit: {
       type: String,
       enum: ["Minutes", "Hours", "Days"],
-      required: true,
     },
     value: {
       type: Number,
@@ -175,6 +174,9 @@ const TaskSchema = new Schema(
     estimatedTime: {
       type: EstimatedTimeSchema,
       required: true,
+    },
+    entryTime: {
+      type: EstimatedTimeSchema,
     },
     noOfEntry: Number,
     entryDone: Number,

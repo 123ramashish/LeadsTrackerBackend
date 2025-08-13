@@ -117,6 +117,7 @@ export default class TaskController {
         taskDate: startDate,
         estimatedTime: { unit, value: totalValue },
         noOfEntry: body.noOfEntry,
+        entryTime: body.entryTime,
         assignee: body.assignee,
         userEstimatedTime,
         priority: body.priority,
@@ -194,6 +195,21 @@ export default class TaskController {
 
       // Fetch tasks from DB
       const tasks = await Task.find(filter)
+        .populate("assignee", "_id name role")
+        .populate("userEstimatedTime.user", "_id name role")
+        .populate("status.user", "_id name role")
+        .populate("dueDate.user", "_id name role")
+        .populate("startDate.user", "_id name role")
+        .populate("endDate.user", "_id name role")
+        .populate("createdBy", "_id name role")
+        .populate("company", "_id name role")
+        .populate("individualBucket.user", "_id name role")
+        .populate("evaluation.user", "_id name role")
+        .populate("statusHistory.changedBy", "_id name role")
+        .populate("comments.createdBy", "_id name role")
+        .populate("time_spent.user", "_id name role")
+        .populate("Accept.user", "_id name role")
+        .populate("actionEvents.user", "_id name role")
         .sort(sort)
         .skip(parseInt(skip))
         .limit(parseInt(limit));
@@ -326,6 +342,7 @@ export default class TaskController {
         .populate("endDate.user", "_id name role")
         .populate("createdBy", "_id name role")
         .populate("company", "_id name role")
+        .populate("statusHistory.changedBy", "_id name role")
         .lean();
 
       // Step 3: Process status per user
@@ -523,6 +540,55 @@ export default class TaskController {
       return res.status(200).json(task.comments);
     } catch (error: any) {
       console.error("Error getting task comments:", error.message);
+      return res.status(500).json({
+        message: "Internal Server Error",
+        error: error.message,
+      });
+    }
+  }
+
+  async updateTaskTimeline(req: Request, res: Response) {
+    try {
+      const { id, company, user, dueDate } = req.body;
+
+      // Validate ObjectIds
+      if (
+        !id ||
+        !company ||
+        !user
+      ) {
+        return res.status(400).json({ message: "Invalid ID format" });
+      }
+
+      // Find the task by id and company
+      const task = await Task.findOne({ _id: new mongoose.Types.ObjectId(id), company: new mongoose.Types.ObjectId(company) });
+      if (!task) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+
+      // Find the dueDate entry for this user
+      const userDueDateEntry = task.dueDate.find(
+        (entry: any) => entry.user.toString() === user
+      );
+
+      if (!userDueDateEntry) {
+        return res
+          .status(400)
+          .json({ message: "User is not assigned to this task" });
+      }
+
+      // Push the new date
+      userDueDateEntry.date.push(new Date(dueDate));
+
+      // Save changes
+      await task.save();
+
+      return res.status(200).json({
+        message: "Due date updated successfully",
+        task,
+      });
+    } catch (error: any) {
+      console.error("Error updating task timeline:", error.message);
       return res.status(500).json({
         message: "Internal Server Error",
         error: error.message,
