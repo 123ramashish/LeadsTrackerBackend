@@ -7,9 +7,11 @@ import goalRouter from "./goal.router";
 import repeatTaskRouter from "./repeatTask.router";
 import fileRouter from "./file.router";
 import dashboardRouter from "./dashboard.router";
+import attendanceRouter from "./attendance.router";
 
 const router = Router();
 
+router.use("/attendance", attendanceRouter);
 router.use("/dashboard", dashboardRouter);
 router.use("/user", userRouter);
 router.use("/registration", registrationRouter);
