@@ -36,7 +36,7 @@ const GoalSchema: Schema = new Schema<IGoal>(
     },
 
     user: {
-      type: Schema.Types.ObjectId,
+      type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: [true, "User is required"],
     },

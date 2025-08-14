@@ -11,10 +11,7 @@ export default class AuthController {
       const user: any = await User.findOne({ email });
       if (!user) return res.status(401).json({ message: "User not found" });
       console.log("User found:", user.email, email, password);
-      const isMatch = await bcrypt.compare(
-        password + process.env.JWT_SECRET,
-        user.password
-      );
+      const isMatch = await bcrypt.compare(password, user.password);
       if (!isMatch) return res.status(401).json({ message: "Wrong Password!" });
 
       await this.updateLastLogin(user._id);

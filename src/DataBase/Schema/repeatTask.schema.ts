@@ -1,203 +1,257 @@
-import  mongoose from 'mongoose'
-import  {Schema} from 'mongoose'
-
+import mongoose from "mongoose";
+import { Schema } from "mongoose";
 
 // EstimatedTime Sub-schema
-const EstimatedTimeSchema = new Schema({
-  unit: {
-    type: String,
-    enum: ['Minutes', 'Hours', 'Days'],
-    required: true
+const EstimatedTimeSchema = new Schema(
+  {
+    unit: {
+      type: String,
+      enum: ["Minutes", "Hours", "Days"],
+      required: true,
+    },
+    value: {
+      type: Number,
+      required: true,
+      min: 1,
+    },
   },
-  value: {
-    type: Number,
-    required: true,
-    min: 1
-  }
-}, { _id: false });
+  { _id: false }
+);
 
 // StatusHistoryEntry Sub-schema
-const StatusHistoryEntrySchema = new Schema({
-  status: {
-    type: String,
-    enum: ['not assignee', 'assignee', 'in progress', 'pause', 'completed', 'expired', 'cancel']
+const StatusHistoryEntrySchema = new Schema(
+  {
+    status: {
+      type: String,
+      enum: [
+        "not assignee",
+        "assignee",
+        "in progress",
+        "pause",
+        "completed",
+        "expired",
+        "cancel",
+      ],
+    },
+    changedAt: {
+      type: Date,
+      default: Date.now,
+    },
+    changedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+    address: String,
   },
-  changedAt: {
-    type: Date,
-    default: Date.now
-  },
-  changedBy: {
-    type: Schema.Types.ObjectId,
-    ref: 'User'
-  },
-  address: String
-}, { _id: false });
+  { _id: false }
+);
 
 // Comment Sub-schema
-const CommentSchema = new Schema({
-  createdBy: {
-    type: Schema.Types.ObjectId,
-    ref: 'User'
+const CommentSchema = new Schema(
+  {
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+    createdAt: Date,
+    message: String,
+    files: [String],
+    workingLocation: String,
   },
-  createdAt: Date,
-  message: String,
-  files: [String],
-  workingLocation: String
-}, { _id: false });
+  { _id: false }
+);
 
 // TimeSpent Sub-schema
-const TimeSpentSchema = new Schema({
-  user: {
-    type: Schema.Types.ObjectId,
-    ref: 'User'
+const TimeSpentSchema = new Schema(
+  {
+    user: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+    time: [Number], // Array of time entries in minutes
   },
-  time: [Number]  // Array of time entries in minutes
-}, { _id: false });
+  { _id: false }
+);
 
 // UserEstimatedTime Sub-schema
-const UserEstimatedTimeSchema = new Schema({
-  user: {
-    type: Schema.Types.ObjectId,
-    ref: 'User'
+const UserEstimatedTimeSchema = new Schema(
+  {
+    user: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+    estimatedTime: {
+      type: EstimatedTimeSchema,
+      required: true,
+    },
   },
-  estimatedTime: {
-    type: EstimatedTimeSchema,
-    required: true
-  }
-}, { _id: false });
+  { _id: false }
+);
 
 // ActionEvent Sub-schema
-const ActionEventSchema = new Schema({
-  user: {
-    type: Schema.Types.ObjectId,
-    ref: 'User'
+const ActionEventSchema = new Schema(
+  {
+    user: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+    actionOn: String,
+    actionType: String,
+    actionDate: Date,
+    actionDetails: String,
+    actionLocation: String,
   },
-  actionOn: String,
-  actionType: String,
-  actionDate: Date,
-  actionDetails: String,
-  actionLocation: String
-}, { _id: false });
+  { _id: false }
+);
 
 // Evaluation Sub-schema (for reward/punishment)
-const EvaluationSchema = new Schema({
-  user: {
-    type: Schema.Types.ObjectId,
-    ref: 'User'
+const EvaluationSchema = new Schema(
+  {
+    user: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+    type: {
+      type: String,
+      enum: ["Rewarded", "Punished"],
+    },
+    amount: Number,
   },
-  type: {
-    type: String,
-    enum: ['Rewarded', 'Punished']
-  },
-  amount: Number
-}, { _id: false });
+  { _id: false }
+);
 
 // Status Sub-schema (per user status)
-const UserStatusSchema = new Schema({
-  user: {
-    type: Schema.Types.ObjectId,
-    ref: 'User'
+const UserStatusSchema = new Schema(
+  {
+    user: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+    status: String,
   },
-  status: String
-}, { _id: false });
+  { _id: false }
+);
 
 // DueDate Sub-schema (user-specific due dates)
-const DueDateSchema = new Schema({
-  user: {
-    type: Schema.Types.ObjectId,
-    ref: 'User'
+const DueDateSchema = new Schema(
+  {
+    user: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+    date: [Date], // Array of dates for the user
   },
-  date: [Date]  // Array of dates for the user
-}, { _id: false });
+  { _id: false }
+);
 
 // Acceptance Sub-schema (task acceptance tracking)
-const AcceptanceSchema = new Schema({
-  user: {
-    type: Schema.Types.ObjectId,
-    ref: 'User'
+const AcceptanceSchema = new Schema(
+  {
+    user: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+    status: Boolean,
   },
-  status: Boolean
-}, { _id: false });
+  { _id: false }
+);
 
-const TaskSchema = new Schema({
-  taskTitle: {
-    type: String,
-    required: true,
-    trim: true
+const RepeatTaskSchema = new Schema(
+  {
+    taskTitle: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    taskDate: {
+      type: Date,
+      required: true,
+    },
+    taskDescription: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    estimatedTime: {
+      unit: {
+        type: String,
+        enum: ["Minutes", "Hours", "Days"],
+        required: true,
+      },
+      value: {
+        type: Number,
+        required: true,
+        min: 0,
+      },
+    },
+    entryTime: {
+      unit: {
+        type: String,
+        enum: ["Minutes", "Hours", "Days"],
+      },
+      value: {
+        type: Number,
+        min: 0,
+      },
+    },
+   
+    noOfEntry: Number,
+    assignee: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      },
+    ],
+    priority: {
+      type: String,
+      enum: ["high", "medium", "low"],
+      required: true,
+    },
+    location: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    address: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    startDate: Date,
+    endDate: Date,
+    repeatInterval: {
+      type: String,
+      enum: ["daily", "weekly", "monthly", "quarterly", "annually"],
+      required: [true, "Repeat interval is required"],
+    },
+    repeatDay: Number,
+    repeatMonthNumber: Number,
+    repeatDate: Date,
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+    company: mongoose.Schema.Types.ObjectId,
+    tags: [String],
+    approval: Boolean,
+    notes: String,
+    divideTime: Boolean,
+    Accept: [AcceptanceSchema],
+    repeatTaskId: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "RepeatingTask",
+      },
+    ],
+    actionEvents: [ActionEventSchema],
   },
-  taskDate: {
-    type: Date,
-    required: true
-  },
-  taskDescription: {
-    type: String,
-    required: true,
-    trim: true
-  },
-  estimatedTime: {
-    type: EstimatedTimeSchema,
-    required: true
-  },
-  assignee: [{
-    type: Schema.Types.ObjectId,
-    ref: 'User'
-  }],
-  userEstimatedTime: [UserEstimatedTimeSchema],
-  priority: {
-    type: String,
-    enum: ['high', 'medium', 'low'],
-    required: true
-  },
-  evaluation: [EvaluationSchema],
-  status: [UserStatusSchema],
-  statusHistory: [StatusHistoryEntrySchema],
-  location: {
-    type: String,
-    required: true,
-    trim: true
-  },
-  address: {
-    type: String,
-    trim: true,
-    default: null
-  },
-  dueDate: [DueDateSchema],
-  startDate: [{user:Schema.Types.ObjectId,date:Date}],
-  endDate:  [{user:Schema.Types.ObjectId,date:Date}],
-  createdBy: {
-    type: Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
-  },
-  company:Schema.Types.ObjectId,
-  tags: [String],
-  comments: [CommentSchema],
-  approval: Boolean,
-  time_spent: [TimeSpentSchema],
-  notes: String,
-  individualBucket: [{
-    user:Schema.Types.ObjectId,
-    individual:{
-    type: Boolean,
-    default: false
-    }
-  }],
-  companyBucket: {
-    type: Boolean,
-    default: false
-  },
-  taskType: String,
-  Accept: [AcceptanceSchema],
-  repeatTaskId: {
-    type: Schema.Types.ObjectId,
-    ref: 'RepeatingTask'
-  },
-  actionEvents: [ActionEventSchema]
-}, {
-  timestamps: true  // Adds createdAt and updatedAt
-});
+  {
+    timestamps: true,
+  }
+);
 
 // Create the Task model
-const Task = mongoose.model('Task', TaskSchema);
+const RepeatTask = mongoose.model("RepeatTask", RepeatTaskSchema);
 
-export default Task;
+export default RepeatTask;
