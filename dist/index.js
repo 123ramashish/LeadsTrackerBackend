@@ -79,4 +79,3 @@ app.listen(process.env.PORT, async () => {
         await autoController.runAutoUpdate();
     });
 });
-//# sourceMappingURL=index.js.map

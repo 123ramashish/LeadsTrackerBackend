@@ -20,4 +20,3 @@ userRouter.delete("/:id", auth_middleware_1.authenticate, (0, auth_middleware_1.
 // Update password
 userRouter.put("/:id/password", auth_middleware_1.authenticate, user_controller_1.default.updatePassword);
 exports.default = userRouter;
-//# sourceMappingURL=user.router.js.map

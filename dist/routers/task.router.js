@@ -20,4 +20,3 @@ taskRouter.get("/:userId", auth_middleware_1.authenticate, taskController.getTas
 taskRouter.put("/timeline", taskController.updateTaskTimeline);
 // taskRouter.delete("/:id",  taskController.deleteTask);
 exports.default = taskRouter;
-//# sourceMappingURL=task.router.js.map

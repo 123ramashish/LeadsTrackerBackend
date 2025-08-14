@@ -58,4 +58,3 @@ connectDB().then(() => {
     console.log("DataBase Connected");
 });
 exports.default = connectDB;
-//# sourceMappingURL=database.js.map

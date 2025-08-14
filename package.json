@@ -3,9 +3,8 @@
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
-  "scripts": {
-  "clean": "rimraf dist",
-  "build": "tsc",
+"scripts": {
+  "build": "rimraf dist && tsc --listFiles --pretty --diagnostics",
   "start": "node dist/index.js",
   "dev": "nodemon --watch src --exec ts-node src/index.ts"
 },

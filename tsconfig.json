@@ -1,16 +1,13 @@
 {
   "compilerOptions": {
-    "target": "ES2020",                       // Modern JS output
-    "module": "CommonJS",                     // Matches package.json "type": "commonjs"
-    "rootDir": "./src",                       // Where TS source code is
-    "outDir": "./dist",                       // Where compiled JS should go
-    "strict": true,                           // Enable strict type checks
-    "esModuleInterop": true,                  // Allow default imports for CommonJS modules
-    "forceConsistentCasingInFileNames": true, // Avoid case sensitivity issues
-    "skipLibCheck": true,                     // Skip node_modules type checking
-    "resolveJsonModule": true,                // Allow importing JSON
-    "sourceMap": true                         // Helpful for debugging in dev/prod
+    "target": "ES2020",
+    "module": "commonjs",
+    "rootDir": "src",
+    "outDir": "dist",
+    "esModuleInterop": true,
+    "strict": true,
+    "skipLibCheck": true
   },
-  "include": ["src"],                         // Compile only src folder
-  "exclude": ["node_modules", "dist"]         // Ignore output & dependencies
+  "include": ["src"],
+  "exclude": ["node_modules", "dist"]
 }

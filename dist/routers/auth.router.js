@@ -12,4 +12,3 @@ router.post("/login-phone", authController.loginWithPhone.bind(authController));
 router.post("/refresh-token", authController.refreshToken.bind(authController));
 router.post("/generate-otp", authController.generateOtp.bind(authController));
 exports.default = router;
-//# sourceMappingURL=auth.router.js.map
