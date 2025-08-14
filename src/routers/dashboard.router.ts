@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { authenticate, authorizeRoles } from "../middlewares/auth.middleware";
+import { authenticate } from "../middlewares/auth.middleware";
 import DashboardController from "../controller/dashboard.controller";
 
 const dashboardRouter = Router();
