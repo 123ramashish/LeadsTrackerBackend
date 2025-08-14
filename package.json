@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
 "scripts": {
-  "build": "rimraf dist && tsc --listFiles --pretty --diagnostics",
+  "build": "tsc",
   "start": "node dist/index.js",
   "dev": "nodemon --watch src --exec ts-node src/index.ts"
 },
