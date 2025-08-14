@@ -56,3 +56,4 @@ const registrationSchema = new mongoose_1.default.Schema({
 });
 const Registration = mongoose_1.default.model('Registration', registrationSchema);
 exports.default = Registration;
+//# sourceMappingURL=registration.schema.js.map

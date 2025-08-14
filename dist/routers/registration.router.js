@@ -11,3 +11,4 @@ router.post("/register", registrationController.registerCompany);
 router.post("/signin", registrationController.companySignin);
 router.post("/signout", registrationController.companySignout);
 exports.default = router;
+//# sourceMappingURL=registration.router.js.map

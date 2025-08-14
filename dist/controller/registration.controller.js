@@ -104,3 +104,4 @@ class RegistrationController {
     }
 }
 exports.default = RegistrationController;
+//# sourceMappingURL=registration.controller.js.map

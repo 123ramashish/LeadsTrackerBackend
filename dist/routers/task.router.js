@@ -10,7 +10,14 @@ const taskController = new task_controller_1.default();
 const taskRouter = (0, express_1.Router)();
 taskRouter.post("/create", auth_middleware_1.authenticate, taskController.createTask.bind(taskController));
 // Future endpoints
-// taskRouter.get("/:id", taskController.getTaskById);
-// taskRouter.put("/:id",  taskController.updateTask);
+taskRouter.get("/", auth_middleware_1.authenticate, taskController.getAllTask);
+taskRouter.get("/totalTaskAmountTime", auth_middleware_1.authenticate, taskController.getTaskAmountTime);
+taskRouter.get("/message", auth_middleware_1.authenticate, taskController.getTaskMessages);
+taskRouter.put("/status", auth_middleware_1.authenticate, taskController.updateTaskStatus);
+taskRouter.put("/status", auth_middleware_1.authenticate, taskController.updateTaskStatus);
+taskRouter.post("/message", auth_middleware_1.authenticate, taskController.addTaskMessage);
+taskRouter.get("/:userId", auth_middleware_1.authenticate, taskController.getTaskById);
+taskRouter.put("/timeline", taskController.updateTaskTimeline);
 // taskRouter.delete("/:id",  taskController.deleteTask);
 exports.default = taskRouter;
+//# sourceMappingURL=task.router.js.map
