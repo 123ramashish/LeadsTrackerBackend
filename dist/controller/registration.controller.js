@@ -13,18 +13,19 @@ class RegistrationController {
         try {
             const { userType, name, email, phone, password, role } = req.body;
             // Validate userType presence
+            console.log("body", req.body);
             if (!userType) {
                 return res.status(400).json({ message: "User type is required" });
             }
             // Check if registration exists
-            const existingRegistration = await registration_schema_1.default.findOne({
-                $or: [{ email }, { phone }],
-            });
-            if (existingRegistration) {
-                return res
-                    .status(409)
-                    .json({ message: "Email or phone already registered" });
-            }
+            // const existingRegistration = await Registration.findOne({
+            //   $or: [{ email }, { phone }],
+            // });
+            // if (existingRegistration) {
+            //   return res
+            //     .status(409)
+            //     .json({ message: "Email or phone already registered" });
+            // }
             // Hash password
             const hashedPassword = await bcrypt_1.default.hash(password + process.env.JWT_SECRET, 10);
             // Create registration
