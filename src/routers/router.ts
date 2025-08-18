@@ -8,12 +8,14 @@ import repeatTaskRouter from "./repeatTask.router";
 import fileRouter from "./file.router";
 import dashboardRouter from "./dashboard.router";
 import attendanceRouter from "./attendance.router";
+import leadRouter from "./lead.router";
 
 const router = Router();
 
-router.use("/attendance", attendanceRouter);
 router.use("/dashboard", dashboardRouter);
+router.use("/attendance", attendanceRouter);
 router.use("/user", userRouter);
+router.use("/leads", leadRouter);
 router.use("/registration", registrationRouter);
 router.use("/auth", authRouter);
 router.use("/task", taskRouter);

@@ -52,7 +52,7 @@ export const authenticate = async (
           );
 
           // Attach user & new token in header for client to update
-          req.user = { sub: user._id, email: user.email, role: user.userRole };
+          req.user = { sub: user._id, email: user.email, role: user.userRole ,company:user.company};
           res.setHeader("x-new-access-token", newAccessToken);
           res.cookie("accessToken", newAccessToken, {
             httpOnly: true,

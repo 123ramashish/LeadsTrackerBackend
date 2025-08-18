@@ -14,6 +14,7 @@ repeatTaskRouter.post(
 );
 
 // Future endpoints
+repeatTaskRouter.get("/", authenticate,repeatTaskController.getAllRepeatTask.bind(repeatTaskController));
 // repeatTaskRouter.get("/:id", repeatTaskController.getTaskById.bind(repeatTaskController));
 // repeatTaskRouter.put("/:id", repeatTaskController.updateTask.bind(repeatTaskController));
 // repeatTaskRouter.delete("/:id", repeatTaskController.deleteTask.bind(repeatTaskController));

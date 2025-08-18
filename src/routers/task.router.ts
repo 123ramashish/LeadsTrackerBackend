@@ -7,6 +7,7 @@ const taskRouter = Router();
 
 taskRouter.post("/create",authenticate,taskController.createTask.bind(taskController));
 // Future endpoints
+taskRouter.get("/bucket",authenticate, taskController.getTaskBucket);
 taskRouter.get("/", authenticate,taskController.getAllTask);
 taskRouter.get("/totalTaskAmountTime", authenticate,taskController.getTaskAmountTime);
 taskRouter.get("/message", authenticate,taskController.getTaskMessages); 

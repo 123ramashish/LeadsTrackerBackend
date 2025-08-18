@@ -552,16 +552,15 @@ export default class TaskController {
       const { id, company, user, dueDate } = req.body;
 
       // Validate ObjectIds
-      if (
-        !id ||
-        !company ||
-        !user
-      ) {
+      if (!id || !company || !user) {
         return res.status(400).json({ message: "Invalid ID format" });
       }
 
       // Find the task by id and company
-      const task = await Task.findOne({ _id: new mongoose.Types.ObjectId(id), company: new mongoose.Types.ObjectId(company) });
+      const task = await Task.findOne({
+        _id: new mongoose.Types.ObjectId(id),
+        company: new mongoose.Types.ObjectId(company),
+      });
       if (!task) {
         return res.status(404).json({ message: "Task not found" });
       }
@@ -595,6 +594,66 @@ export default class TaskController {
       });
     }
   }
+async getTaskBucket(req: AuthRequest, res: Response) {
+  try {
+    const { bucketType, company } = req.query as {
+      bucketType?: "individual" | "company" | "";
+      company?: string;
+    };
+
+    // base filter
+    const filter: any = {};
+
+    // restrict to company if passed
+    if (company) {
+      filter.company = new mongoose.Types.ObjectId(company);
+    }
+
+    // filter by bucket type
+    if (bucketType === "individual") {
+      filter["individualBucket.individual"] = true;
+    } else if (bucketType === "company") {
+      filter.companyBucket = true;
+    } else {
+      // if empty → match either individual OR company bucket
+      filter.$or = [
+        { "individualBucket.individual": true },
+        { companyBucket: true },
+      ];
+    }
+
+    const tasks = await Task.find(filter)
+      .populate("assignee", "_id name role")
+      .populate("userEstimatedTime.user", "_id name role")
+      .populate("status.user", "_id name role")
+      .populate("dueDate.user", "_id name role")
+      .populate("startDate.user", "_id name role")
+      .populate("endDate.user", "_id name role")
+      .populate("createdBy", "_id name role")
+      .populate("company", "_id name role")
+      .populate("individualBucket.user", "_id name role")
+      .populate("evaluation.user", "_id name role")
+      .populate("statusHistory.changedBy", "_id name role")
+      .populate("comments.createdBy", "_id name role")
+      .populate("time_spent.user", "_id name role")
+      .populate("Accept.user", "_id name role")
+      .populate("actionEvents.user", "_id name role")
+      .sort({ createdAt: -1 });
+
+    return res.status(200).json({
+      count: tasks.length,
+      tasks,
+    });
+  } catch (error: any) {
+    console.error("Error getting task bucket:", error.message);
+    return res.status(500).json({
+      message: "Internal Server Error",
+      error: error.message,
+    });
+  }
+}
+
+
 
   // ✅ Utility: Get local timezone
   private async getLocalTimeZone(): Promise<string> {
