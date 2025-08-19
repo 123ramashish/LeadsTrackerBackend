@@ -9,11 +9,15 @@ import fileRouter from "./file.router";
 import dashboardRouter from "./dashboard.router";
 import attendanceRouter from "./attendance.router";
 import leadRouter from "./lead.router";
+import suggestionRouter from "./suggestions.router";
+import feedbackRouter from "./feedback.router";
 
 const router = Router();
 
 router.use("/dashboard", dashboardRouter);
 router.use("/attendance", attendanceRouter);
+router.use("/suggestions", suggestionRouter);
+router.use("/feedbacks", feedbackRouter);
 router.use("/user", userRouter);
 router.use("/leads", leadRouter);
 router.use("/registration", registrationRouter);
