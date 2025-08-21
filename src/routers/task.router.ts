@@ -15,7 +15,8 @@ taskRouter.put("/status", authenticate, taskController.updateTaskStatus);
 taskRouter.put("/status", authenticate, taskController.updateTaskStatus);
 taskRouter.post("/message", authenticate,taskController.addTaskMessage); 
 taskRouter.get("/:userId",authenticate, taskController.getTaskById);
-taskRouter.put("/timeline",  taskController.updateTaskTimeline);
+taskRouter.put("/timeline", authenticate, taskController.updateTaskTimeline);
+taskRouter.put("/details", authenticate, taskController.updateTaskDetails);
 // taskRouter.delete("/:id",  taskController.deleteTask);
 
 export default taskRouter;

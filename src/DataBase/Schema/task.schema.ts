@@ -234,6 +234,7 @@ const TaskSchema = new Schema(
       default: false,
     },
     taskType: String,
+    divideTime: Boolean,
     Accept: [AcceptanceSchema],
     repeatTaskId: {
       type: mongoose.Schema.Types.ObjectId,
