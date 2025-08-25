@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 const leaveSchema = new mongoose.Schema({
   _id: {
     type: mongoose.Schema.Types.ObjectId,
-    default: () => new mongoose.Types.ObjectId()
+    default: () => new mongoose.Types.ObjectId(),
   },
   user: {
     type: mongoose.Schema.Types.ObjectId,
@@ -34,25 +34,20 @@ const leaveSchema = new mongoose.Schema({
     enum: ["Pending", "Approved", "Rejected"],
     default: "Pending",
   },
-  createAt: {
-    type: Date,
-    default: Date.now,
-  },
-  updatedAt: {
-    type: Date,
-    default: Date.now
+  company: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Registration",
   },
   remarks: [
     {
       createdBy: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: "User"
+        ref: "User",
       },
       image: String,
       createAt: Date,
-      message: String
-    }
-  ]
-});
-export default mongoose.models.Leave ||
-  mongoose.model("Leave", leaveSchema);
+      message: String,
+    },
+  ],
+},{timestamps:true});
+export default mongoose.models.Leave || mongoose.model("Leave", leaveSchema);

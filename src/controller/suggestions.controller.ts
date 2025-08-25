@@ -5,9 +5,10 @@ import Suggestion from "../DataBase/Schema/suggestions.schema";
 
 interface AuthRequest extends Request {
   user?: {
-    sub: string; 
+    sub: string;
     email: string;
     role: string;
+    company:string;
   };
 }
 
@@ -138,13 +139,14 @@ export default class SuggestionController {
 
       const localTimeZone = DateTime.local().zoneName;
       const { title, suggestion } = req.body;
-console.log("body",req.body,user)
+      console.log("body", req.body, user);
       const newSuggestion = new Suggestion({
         title,
         suggestion,
         createdBy: new mongoose.Types.ObjectId(user.sub),
         status: "in progress",
         createdAt: DateTime.now().setZone(localTimeZone).toJSDate(),
+        company:user.company
       });
 
       await newSuggestion.save();
@@ -292,7 +294,10 @@ console.log("body",req.body,user)
         return res.status(400).json({ message: "Invalid suggestion ID" });
       }
 
-      const suggestion = await Suggestion.findById(id).populate("comments.user", "_id name role");
+      const suggestion = await Suggestion.findById(id).populate(
+        "comments.user",
+        "_id name role"
+      );
       if (!suggestion) {
         return res.status(404).json({ message: "Suggestion not found" });
       }
@@ -308,9 +313,9 @@ console.log("body",req.body,user)
    */
   static async addCommentSuggestions(req: AuthRequest, res: Response) {
     try {
-      const { documentId,comment,userId } = req.body;
+      const { documentId, comment, userId } = req.body;
       const user = req.user;
-console.log("body",req.body)
+      console.log("body", req.body);
       if (!documentId || !comment) {
         return res.status(400).json({ message: "Missing data" });
       }
@@ -322,7 +327,7 @@ console.log("body",req.body)
 
       const newComment = {
         user: new mongoose.Types.ObjectId(user?.sub),
-        content:comment,
+        content: comment,
         createdAt: new Date(),
       };
 

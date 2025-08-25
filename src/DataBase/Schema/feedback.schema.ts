@@ -5,6 +5,10 @@ export interface IFeedback extends Document {
   description: string;
   status: string;
   user: mongoose.Types.ObjectId;
+  company: {
+    type: mongoose.Schema.Types.ObjectId;
+    ref: "Registration";
+  };
   comments: {
     user: mongoose.Types.ObjectId;
     message: string;

@@ -3,7 +3,7 @@ import mongoose from "mongoose";
 import Feedback from "../DataBase/Schema/feedback.schema";
 
 interface AuthRequest extends Request {
-  user?: { sub: string; email: string; role: string };
+  user?: { sub: string; email: string; role: string,company:string };
 }
 
 export default class FeedbackController {
@@ -25,6 +25,7 @@ export default class FeedbackController {
   // ✅ Create Feedback
   static async createFeedback(req: AuthRequest, res: Response) {
     try {
+      const { user } = req;
       const { title, description } = req.body;
       if (!title || !description) {
         return res.status(400).json({
@@ -36,6 +37,7 @@ export default class FeedbackController {
         title,
         description,
         user: new mongoose.Types.ObjectId(req.user?.sub),
+        company:user?.company
       });
 
       const populated = await feedback.populate("user", "name email");

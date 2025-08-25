@@ -6,6 +6,7 @@ export interface IGoal extends Document {
   status: string;
   endDate: Date;
   user: mongoose.Types.ObjectId;
+  company: mongoose.Types.ObjectId;
 }
 
 const GoalSchema: Schema = new Schema<IGoal>(
@@ -34,7 +35,10 @@ const GoalSchema: Schema = new Schema<IGoal>(
       type: Date,
       required: [true, "Target date is required"],
     },
-
+    company: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Registration",
+    },
     user: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",

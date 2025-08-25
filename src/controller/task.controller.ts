@@ -8,6 +8,7 @@ interface AuthRequest extends Request {
     sub: string;
     email: string;
     role: string;
+    company:string;
   };
 }
 export default class TaskController {

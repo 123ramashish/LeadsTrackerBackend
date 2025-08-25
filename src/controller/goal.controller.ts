@@ -9,6 +9,7 @@ interface AuthRequest extends Request {
     sub: string;
     email: string;
     role: string;
+    company:string;
   };
 }
 
@@ -157,6 +158,7 @@ export default class GoalController {
           user: new mongoose.Types.ObjectId(user.sub),
           status: "pending",
           completedDates: [],
+          company:user.company
         };
 
         // ✅ Optionally store repeatConfig info inside description or extra fields

@@ -13,6 +13,7 @@ export interface ILead extends Document {
   assignee: boolean;
   createdAt?: Date;
   updatedAt?: Date;
+  company: mongoose.Types.ObjectId;
 }
 
 const docSchema = new Schema<ILead>(
@@ -27,13 +28,17 @@ const docSchema = new Schema<ILead>(
     ContactPerson: { type: String, required: true },
     Comments: { type: String, default: "" },
     Project: { type: String, default: "" },
+    company: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Registration",
+    },
     createdBy: { type: Schema.Types.ObjectId, ref: "User" },
     assigneeTo: { type: Schema.Types.ObjectId, ref: "User" },
     assignee: { type: Boolean, default: false },
   },
   {
-    timestamps: true,   
-    versionKey: false, 
+    timestamps: true,
+    versionKey: false,
   }
 );
 

@@ -194,7 +194,7 @@ const RepeatTaskSchema = new Schema(
         min: 0,
       },
     },
-   
+
     noOfEntry: Number,
     assignee: [
       {
@@ -232,7 +232,10 @@ const RepeatTaskSchema = new Schema(
       ref: "User",
       required: true,
     },
-    company: mongoose.Schema.Types.ObjectId,
+    company: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Registration",
+    },
     tags: [String],
     approval: Boolean,
     notes: String,

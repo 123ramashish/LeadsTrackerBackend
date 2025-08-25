@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "types": "module",
-"scripts": {
+  "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "nodemon --watch src --exec ts-node src/index.ts"
@@ -50,6 +50,7 @@
     "node-cron": "^4.2.1",
     "password-hash": "^1.2.2",
     "react-redux": "^9.2.0",
-    "redux-persist": "^6.0.0"
+    "redux-persist": "^6.0.0",
+    "web-push": "^3.6.7"
   }
 }

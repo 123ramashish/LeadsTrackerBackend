@@ -12,6 +12,7 @@ interface AuthenticatedRequest extends Request {
     _id: mongoose.Types.ObjectId;
     userRole: string;
     name?: string;
+    company: mongoose.Types.ObjectId;
   };
 }
 
@@ -49,11 +50,12 @@ export default class AttendanceController {
           user: user.sub,
           punchIn: DateTime.fromISO(punchIn).setZone(localTimeZone).toJSDate(),
           punchInLocation: punchInLocation || "N/A",
-          createdAt: new Date(),
+          createdAt: DateTime.now().setZone(localTimeZone).toJSDate(),
+          company: user?.company,
         });
 
         const punchInTime = DateTime.fromISO(punchIn)
-          .setZone("Asia/Kolkata")
+          .setZone(localTimeZone)
           .toFormat("hh:mm a");
 
         return res.status(201).json({
@@ -66,7 +68,10 @@ export default class AttendanceController {
       // Punch Out
       if (punchOut) {
         const activeRecord = await attendanceSchema
-          .findOne({ user: new mongoose.Types.ObjectId(user.sub), punchOut: { $exists: false } })
+          .findOne({
+            user: new mongoose.Types.ObjectId(user.sub),
+            punchOut: { $exists: false },
+          })
           .sort({ punchIn: -1 });
 
         if (!activeRecord) {
@@ -89,7 +94,7 @@ export default class AttendanceController {
           {
             punchOut: punchOutDate,
             punchOutLocation: punchOutLocation || "N/A",
-            updatedAt: new Date(),
+            updatedAt: DateTime.now().setZone(localTimeZone).toJSDate(),
           },
           { new: true }
         );
@@ -125,9 +130,14 @@ export default class AttendanceController {
   static async getAttendance(req: AuthenticatedRequest, res: Response) {
     try {
       const { user } = req;
-      const { startDate: startDate_, endDate: endDate_ } = req.query as {
+      const {
+        startDate: startDate_,
+        endDate: endDate_,
+        assignee,
+      } = req.query as {
         startDate?: string;
         endDate?: string;
+        assignee?: any;
       };
 
       console.log("query", req.query, "user", user);
@@ -158,7 +168,14 @@ export default class AttendanceController {
 
       if (user.userRole === "staff") {
         query.user = user._id;
+      } else {
+        const assigneeArray = assignee
+          .split(",")
+          .map((id: string) => new mongoose.Types.ObjectId(id.trim()));
+
+        query.user = { $in: assigneeArray };
       }
+
       if (user.userRole === "admin" || user.userRole === "teamLeader") {
         query.user = new mongoose.Types.ObjectId(user.sub);
       }
