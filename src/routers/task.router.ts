@@ -17,6 +17,8 @@ taskRouter.post("/message", authenticate,taskController.addTaskMessage);
 taskRouter.get("/:userId",authenticate, taskController.getTaskById);
 taskRouter.put("/timeline", authenticate, taskController.updateTaskTimeline);
 taskRouter.put("/details", authenticate, taskController.updateTaskDetails);
+taskRouter.put("/individualBucket", authenticate, taskController.individualBucket);
+taskRouter.put("/companyBucket", authenticate, taskController.companyBucket);
 // taskRouter.delete("/:id",  taskController.deleteTask);
 
 export default taskRouter;

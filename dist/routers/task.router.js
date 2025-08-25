@@ -10,6 +10,7 @@ const taskController = new task_controller_1.default();
 const taskRouter = (0, express_1.Router)();
 taskRouter.post("/create", auth_middleware_1.authenticate, taskController.createTask.bind(taskController));
 // Future endpoints
+taskRouter.get("/bucket", auth_middleware_1.authenticate, taskController.getTaskBucket);
 taskRouter.get("/", auth_middleware_1.authenticate, taskController.getAllTask);
 taskRouter.get("/totalTaskAmountTime", auth_middleware_1.authenticate, taskController.getTaskAmountTime);
 taskRouter.get("/message", auth_middleware_1.authenticate, taskController.getTaskMessages);
@@ -17,6 +18,9 @@ taskRouter.put("/status", auth_middleware_1.authenticate, taskController.updateT
 taskRouter.put("/status", auth_middleware_1.authenticate, taskController.updateTaskStatus);
 taskRouter.post("/message", auth_middleware_1.authenticate, taskController.addTaskMessage);
 taskRouter.get("/:userId", auth_middleware_1.authenticate, taskController.getTaskById);
-taskRouter.put("/timeline", taskController.updateTaskTimeline);
+taskRouter.put("/timeline", auth_middleware_1.authenticate, taskController.updateTaskTimeline);
+taskRouter.put("/details", auth_middleware_1.authenticate, taskController.updateTaskDetails);
+taskRouter.put("/individualBucket", auth_middleware_1.authenticate, taskController.individualBucket);
+taskRouter.put("/companyBucket", auth_middleware_1.authenticate, taskController.companyBucket);
 // taskRouter.delete("/:id",  taskController.deleteTask);
 exports.default = taskRouter;

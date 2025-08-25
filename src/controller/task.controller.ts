@@ -8,7 +8,7 @@ interface AuthRequest extends Request {
     sub: string;
     email: string;
     role: string;
-    company:string;
+    company: string;
   };
 }
 export default class TaskController {
@@ -148,7 +148,7 @@ export default class TaskController {
       return res.status(500).json({ message: error.message });
     }
   }
-   async getAllTask(req: Request, res: Response) {
+  async getAllTask(req: Request, res: Response) {
     try {
       const normalize = (val: any) =>
         val && val !== "null" && val !== "undefined" && val !== "" ? val : null;
@@ -184,7 +184,6 @@ export default class TaskController {
       const _noOfEntryRange = normalize(noOfEntryRange);
       const _individualBucket = normalize(individualBucket);
 
-      console.log("api call", req.query);
 
       const filter: any = {};
 
@@ -232,7 +231,11 @@ export default class TaskController {
           const endDate = new Date(end);
           filter.$or = [
             { taskDate: { $gte: startDate, $lte: endDate } },
-            { "dueDate.date": { $elemMatch: { $gte: startDate, $lte: endDate } } },
+            {
+              "dueDate.date": {
+                $elemMatch: { $gte: startDate, $lte: endDate },
+              },
+            },
             { "startDate.date": { $gte: startDate, $lte: endDate } },
             { "endDate.date": { $gte: startDate, $lte: endDate } },
           ];
@@ -284,7 +287,6 @@ export default class TaskController {
         .limit(parseInt(limit));
 
       const total = await Task.countDocuments(filter);
-      console.log("total", total);
 
       return res.status(200).json({ total, count: tasks.length, tasks });
     } catch (error: any) {
@@ -771,6 +773,49 @@ export default class TaskController {
         error: error.message,
       });
     }
+  }
+
+  async individualBucket(req: AuthRequest, res: Response) {
+    try {
+      console.log("api call");
+      const user:any = req.user;
+      const tasks = await Task.find({
+        individualBucket: {
+          $elemMatch: { user: user.sub, individual: true },
+        },
+      });
+
+      return res.status(200).json({
+        message: "Individual bucket tasks fetched successfully",
+        count: tasks.length,
+        tasks,
+      });
+    } catch (error: any) {
+      console.error("Error fetching individual bucket:", error.message);
+      return res.status(500).json({
+        message: "Internal Server Error",
+        error: error.message,
+      });
+    }
+  }
+
+  // ✅ Company Bucket
+  async companyBucket(req: AuthRequest, res: Response) {
+    // try {
+    //   const tasks = await Task.find({ companyBucket: true });
+
+    //   return res.status(200).json({
+    //     message: "Company bucket tasks fetched successfully",
+    //     count: tasks.length,
+    //     tasks,
+    //   });
+    // } catch (error: any) {
+    //   console.error("Error fetching company bucket:", error.message);
+    //   return res.status(500).json({
+    //     message: "Internal Server Error",
+    //     error: error.message,
+    //   });
+    // }
   }
 
   // ✅ Utility: Get local timezone

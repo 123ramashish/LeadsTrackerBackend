@@ -196,6 +196,7 @@ const TaskSchema = new mongoose_2.Schema({
         default: false,
     },
     taskType: String,
+    divideTime: Boolean,
     Accept: [AcceptanceSchema],
     repeatTaskId: {
         type: mongoose_1.default.Schema.Types.ObjectId,
