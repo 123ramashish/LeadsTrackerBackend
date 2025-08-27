@@ -596,6 +596,49 @@ export default class TaskController {
     }
   }
 
+   async individualBucket(req: AuthRequest, res: Response) {
+    try {
+      console.log("api call");
+      const user:any = req.user;
+      const tasks = await Task.find({
+        individualBucket: {
+          $elemMatch: { user: user.sub, individual: true },
+        },
+      });
+
+      return res.status(200).json({
+        message: "Individual bucket tasks fetched successfully",
+        count: tasks.length,
+        tasks,
+      });
+    } catch (error: any) {
+      console.error("Error fetching individual bucket:", error.message);
+      return res.status(500).json({
+        message: "Internal Server Error",
+        error: error.message,
+      });
+    }
+  }
+
+  // ✅ Company Bucket
+  async companyBucket(req: AuthRequest, res: Response) {
+    // try {
+    //   const tasks = await Task.find({ companyBucket: true });
+
+    //   return res.status(200).json({
+    //     message: "Company bucket tasks fetched successfully",
+    //     count: tasks.length,
+    //     tasks,
+    //   });
+    // } catch (error: any) {
+    //   console.error("Error fetching company bucket:", error.message);
+    //   return res.status(500).json({
+    //     message: "Internal Server Error",
+    //     error: error.message,
+    //   });
+    // }
+  }
+
   // ✅ Utility: Get local timezone
   private async getLocalTimeZone(): Promise<string> {
     return Intl.DateTimeFormat().resolvedOptions().timeZone;

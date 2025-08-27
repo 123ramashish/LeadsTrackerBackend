@@ -10,6 +10,7 @@ taskRouter.post("/create",authenticate,taskController.createTask.bind(taskContro
 taskRouter.get("/", authenticate,taskController.getAllTask);
 taskRouter.get("/totalTaskAmountTime", authenticate,taskController.getTaskAmountTime);
 taskRouter.get("/message", authenticate,taskController.getTaskMessages); 
+taskRouter.get("/individualBucket", authenticate,taskController.individualBucket); 
 taskRouter.put("/status", authenticate, taskController.updateTaskStatus);
 taskRouter.put("/status", authenticate, taskController.updateTaskStatus);
 taskRouter.post("/message", authenticate,taskController.addTaskMessage); 
