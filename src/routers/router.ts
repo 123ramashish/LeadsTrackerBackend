@@ -9,6 +9,9 @@ import fileRouter from "./file.router";
 import dashboardRouter from "./dashboard.router";
 import attendanceRouter from "./attendance.router";
 import { verifyToken } from "../controller/verifyToken.controller";
+import suggestionRouter from "./suggestions.router";
+import feedbackRouter from "./feedback.router";
+import leadRouter from "./lead.router";
 
 const router = Router();
 
