@@ -9,6 +9,7 @@ interface AuthRequest extends Request {
     sub: string;
     email: string;
     role: string;
+    company:string;
   };
 }
 
@@ -120,6 +121,31 @@ export default class RepeatTaskController {
     } catch (error: any) {
       console.error("Error creating repeat task:", error);
       res.status(500).json({
+        message: "Internal server error",
+        error: error.message,
+      });
+    }
+  }
+
+async getAllRepeatTask(req: AuthRequest, res: Response) {
+    try {
+      const user = req.user;
+      // // Ensure user is authenticated
+      // if (!user || !user.company) {
+      //   return res.status(401).json({ message: "Unauthorized: User not authenticated" });
+      // }
+
+      // Fetch repeat tasks belonging to the user's company
+      const result = await RepeatTask.find().populate("assignee", "_id name role")
+        .populate("createdBy", "_id name role")
+        .populate("company", "_id name role")
+      return res.status(200).json({
+        message: "Repeat tasks fetched successfully",
+        data: result,
+      });
+    } catch (error: any) {
+      console.error("Error fetching repeat tasks:", error);
+      return res.status(500).json({
         message: "Internal server error",
         error: error.message,
       });

@@ -9,6 +9,7 @@ export interface IAttendance extends Document {
   status?: "Present" | "Absent" | "On Leave";
   createdAt: Date;
   updatedAt: Date;
+  company: mongoose.Types.ObjectId;
 }
 
 const attendanceSchema = new Schema<IAttendance>(
@@ -26,6 +27,10 @@ const attendanceSchema = new Schema<IAttendance>(
     punchOut: Date,
     punchInLocation: String,
     punchOutLocation: String,
+    company: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Registration",
+    },
     status: {
       type: String,
       enum: ["Present", "Absent", "On Leave"],

@@ -12,6 +12,7 @@ interface AuthenticatedRequest extends Request {
     _id: mongoose.Types.ObjectId;
     userRole: string;
     name?: string;
+    company: mongoose.Types.ObjectId;
   };
 }
 
@@ -48,7 +49,8 @@ export default class AttendanceController {
           user: user.sub,
           punchIn: DateTime.fromISO(punchIn).setZone(localTimeZone).toJSDate(),
           punchInLocation: punchInLocation || "N/A",
-          createdAt: new Date(),
+          createdAt: DateTime.now().setZone(localTimeZone).toJSDate(),
+          company: user?.company,
         });
 
         const punchInTime = DateTime.fromISO(punchIn)
@@ -66,7 +68,10 @@ export default class AttendanceController {
       if (punchOut) {
         console.log("punchout call")
         const activeRecord = await attendanceSchema
-          .findOne({ user: user.sub, punchOut: { $exists: false } })
+          .findOne({
+            user: new mongoose.Types.ObjectId(user.sub),
+            punchOut: { $exists: false },
+          })
           .sort({ punchIn: -1 });
 
         if (!activeRecord) {
@@ -89,7 +94,7 @@ export default class AttendanceController {
           {
             punchOut: punchOutDate,
             punchOutLocation: punchOutLocation || "N/A",
-            updatedAt: new Date(),
+            updatedAt: DateTime.now().setZone(localTimeZone).toJSDate(),
           },
           { new: true }
         );
@@ -135,25 +140,25 @@ export default class AttendanceController {
       userId?: string;
     } = req.query;
 
-    if (!user?.sub) {
-      return res.status(401).json({ message: "Authentication required" });
-    }
+      if (!user?.sub) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
 
     const localTimeZone = DateTime.local().zoneName;
 
-    const startDate = startDate_
-      ? DateTime.fromISO(startDate_)
-          .setZone(localTimeZone)
-          .startOf("day")
-          .toJSDate()
-      : DateTime.now().setZone(localTimeZone).startOf("day").toJSDate();
+      const startDate = startDate_
+        ? DateTime.fromISO(startDate_)
+            .setZone(localTimeZone)
+            .startOf("day")
+            .toJSDate()
+        : DateTime.now().setZone(localTimeZone).startOf("day").toJSDate();
 
-    const endDate = endDate_
-      ? DateTime.fromISO(endDate_)
-          .setZone(localTimeZone)
-          .endOf("day")
-          .toJSDate()
-      : DateTime.now().setZone(localTimeZone).endOf("day").toJSDate();
+      const endDate = endDate_
+        ? DateTime.fromISO(endDate_)
+            .setZone(localTimeZone)
+            .endOf("day")
+            .toJSDate()
+        : DateTime.now().setZone(localTimeZone).endOf("day").toJSDate();
 
     let query: Record<string, any> = {
       punchIn: { $gte: startDate, $lte: endDate },

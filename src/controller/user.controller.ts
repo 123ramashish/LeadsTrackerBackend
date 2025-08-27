@@ -8,7 +8,7 @@ export default class UserController {
   static async createUser(req: Request, res: Response) {
     try {
       const { name, email, phone, password, userRole, company } = req.body;
-
+      console.log("body", req.body);
       // ✅ Validate required fields
       if (!name || !phone || !password || !userRole) {
         return res.status(400).json({

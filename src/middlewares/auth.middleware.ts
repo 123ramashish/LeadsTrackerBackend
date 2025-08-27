@@ -1,13 +1,16 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import User from "../DataBase/Schema/user.schema";
-    import Cookies from 'js-cookie';
 
 interface AuthRequest extends Request {
   user?: any;
 }
 
-export const authenticate = async (req: AuthRequest, res: Response, next: NextFunction) => {
+export const authenticate = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) => {
   try {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -19,7 +22,10 @@ export const authenticate = async (req: AuthRequest, res: Response, next: NextFu
 
     try {
       // ✅ Verify access token
-      const decoded = jwt.verify(token, process.env.JWT_SECRET || "secret") as any;
+      const decoded = jwt.verify(
+        token,
+        process.env.JWT_SECRET || "secret"
+      ) as any;
       req.user = decoded;
       return next();
     } catch (error: any) {
@@ -47,10 +53,13 @@ export const authenticate = async (req: AuthRequest, res: Response, next: NextFu
           );
 
           // Attach user & new token in header for client to update
-          req.user = { sub: user._id, email: user.email, role: user.userRole };
+          req.user = { sub: user._id, email: user.email, role: user.userRole ,company:user.company};
           res.setHeader("x-new-access-token", newAccessToken);
-          Cookies.remove("accessToken")
-          Cookies.set("accessToken",newAccessToken)
+          res.cookie("accessToken", newAccessToken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "production",
+            sameSite: "strict",
+          });
 
           return next();
         } catch (refreshError) {
@@ -69,7 +78,9 @@ export const authenticate = async (req: AuthRequest, res: Response, next: NextFu
 export const authorizeRoles = (roles: string[]) => {
   return (req: AuthRequest, res: Response, next: NextFunction) => {
     if (!req.user || !roles.includes(req.user.role)) {
-      return res.status(403).json({ message: "Forbidden: You don't have permission" });
+      return res
+        .status(403)
+        .json({ message: "Forbidden: You don't have permission" });
     }
     next();
   };

@@ -8,6 +8,7 @@ interface AuthRequest extends Request {
     sub: string;
     email: string;
     role: string;
+    company: string;
   };
 }
 export default class TaskController {
@@ -133,6 +134,7 @@ export default class TaskController {
         company: new mongoose.Types.ObjectId(body.company),
         individualBucket,
         companyBucket,
+        divideTime: body.divide,
       });
 
       await task.save();
@@ -148,52 +150,122 @@ export default class TaskController {
   }
   async getAllTask(req: Request, res: Response) {
     try {
+      const normalize = (val: any) =>
+        val && val !== "null" && val !== "undefined" && val !== "" ? val : null;
+
+      // ✅ Extract + normalize query params
       const {
         status,
         priority,
         assignee,
         createdBy,
         company,
+        tags,
         search,
-        limit = "10",
+        limit = "20",
         skip = "0",
         sortBy = "createdAt",
         order = "desc",
-      } = req.query as {
-        status?: string;
-        priority?: string;
-        assignee?: string;
-        createdBy?: string;
-        company?: string;
-        search?: string;
-        limit?: string;
-        skip?: string;
-        sortBy?: string;
-        order?: string;
-      };
-      console.log("api call");
-      // Build the filter object
+        dateRange,
+        entryDoneRange,
+        noOfEntryRange,
+        individualBucket,
+      } = req.query as any;
+
+      const _status = normalize(status);
+      const _priority = normalize(priority);
+      const _assignee = normalize(assignee);
+      const _createdBy = normalize(createdBy);
+      const _tags = normalize(tags);
+      const _company = normalize(company);
+      const _search = normalize(search);
+      const _dateRange = normalize(dateRange);
+      const _entryDoneRange = normalize(entryDoneRange);
+      const _noOfEntryRange = normalize(noOfEntryRange);
+      const _individualBucket = normalize(individualBucket);
+
+
       const filter: any = {};
 
-      if (status) filter["status.status"] = status;
-      if (priority) filter.priority = priority;
-      if (assignee) filter.assignee = assignee;
-      if (createdBy) filter.createdBy = createdBy;
-      if (company) filter.company = company;
+      // ✅ Multi-value fields
+      if (_status) {
+        filter["status.status"] = {
+          $in: _status.split(",").map((s: any) => s.trim()),
+        };
+      }
+      if (_priority) {
+        filter.priority = {
+          $in: _priority.split(",").map((p: any) => p.trim()),
+        };
+      }
+      if (_assignee) {
+        filter.assignee = {
+          $in: _assignee.split(",").map((a: any) => a.trim()),
+        };
+      }
+      if (_createdBy) {
+        filter.createdBy = {
+          $in: _createdBy.split(",").map((c: any) => c.trim()),
+        };
+      }
+      if (_tags) {
+        filter.tags = { $in: _tags.split(",").map((t: any) => t.trim()) };
+      }
+      if (_company) {
+        filter.company = _company;
+      }
 
-      // Optional text search on title or description
-      if (search) {
+      // ✅ Text search
+      if (_search) {
         filter.$or = [
-          { taskTitle: { $regex: search, $options: "i" } },
-          { taskDescription: { $regex: search, $options: "i" } },
+          { taskTitle: { $regex: _search, $options: "i" } },
+          { taskDescription: { $regex: _search, $options: "i" } },
         ];
       }
 
-      // Sorting
+      // ✅ Date range
+      if (_dateRange) {
+        const [start, end] = _dateRange.split(",");
+        if (start && end) {
+          const startDate = new Date(start);
+          const endDate = new Date(end);
+          filter.$or = [
+            { taskDate: { $gte: startDate, $lte: endDate } },
+            {
+              "dueDate.date": {
+                $elemMatch: { $gte: startDate, $lte: endDate },
+              },
+            },
+            { "startDate.date": { $gte: startDate, $lte: endDate } },
+            { "endDate.date": { $gte: startDate, $lte: endDate } },
+          ];
+        }
+      }
+
+      // ✅ Entry ranges
+      if (_entryDoneRange) {
+        const [min, max] = _entryDoneRange.split(",").map(Number);
+        if (!isNaN(min) && !isNaN(max)) {
+          filter.entryDone = { $gte: min, $lte: max };
+        }
+      }
+      if (_noOfEntryRange) {
+        const [min, max] = _noOfEntryRange.split(",").map(Number);
+        if (!isNaN(min) && !isNaN(max)) {
+          filter.noOfEntry = { $gte: min, $lte: max };
+        }
+      }
+
+      // ✅ Boolean field
+      if (_individualBucket !== null) {
+        filter.individualBucket = _individualBucket === "true";
+      }
+
+      // ✅ Sorting
       const sort: any = {};
       sort[sortBy] = order === "asc" ? 1 : -1;
 
-      // Fetch tasks from DB
+      // ✅ Query DB
       const tasks = await Task.find(filter)
         .populate("assignee", "_id name role")
         .populate("userEstimatedTime.user", "_id name role")
@@ -214,15 +286,9 @@ export default class TaskController {
         .skip(parseInt(skip))
         .limit(parseInt(limit));
 
-      // Get total count for pagination
       const total = await Task.countDocuments(filter);
 
-      // Return response
-      return res.status(200).json({
-        total,
-        count: tasks.length,
-        tasks,
-      });
+      return res.status(200).json({ total, count: tasks.length, tasks });
     } catch (error: any) {
       console.error("Error getting tasks:", error.message);
       return res
@@ -390,7 +456,7 @@ export default class TaskController {
   async updateTaskStatus(req: AuthRequest, res: Response) {
     try {
       const { id, company, status, loginUser, address } = req.body;
-
+      console.log("body", req.body);
       const task = await Task.findOne({
         _id: new mongoose.Types.ObjectId(id),
         company: new mongoose.Types.ObjectId(company),
@@ -552,16 +618,15 @@ export default class TaskController {
       const { id, company, user, dueDate } = req.body;
 
       // Validate ObjectIds
-      if (
-        !id ||
-        !company ||
-        !user
-      ) {
+      if (!id || !company || !user) {
         return res.status(400).json({ message: "Invalid ID format" });
       }
 
       // Find the task by id and company
-      const task = await Task.findOne({ _id: new mongoose.Types.ObjectId(id), company: new mongoose.Types.ObjectId(company) });
+      const task = await Task.findOne({
+        _id: new mongoose.Types.ObjectId(id),
+        company: new mongoose.Types.ObjectId(company),
+      });
       if (!task) {
         return res.status(404).json({ message: "Task not found" });
       }
@@ -594,6 +659,163 @@ export default class TaskController {
         error: error.message,
       });
     }
+  }
+  async getTaskBucket(req: AuthRequest, res: Response) {
+    try {
+      const { bucketType, company } = req.query as {
+        bucketType?: "individual" | "company" | "";
+        company?: string;
+      };
+
+      // base filter
+      const filter: any = {};
+
+      // restrict to company if passed
+      if (company) {
+        filter.company = new mongoose.Types.ObjectId(company);
+      }
+
+      // filter by bucket type
+      if (bucketType === "individual") {
+        filter["individualBucket.individual"] = true;
+      } else if (bucketType === "company") {
+        filter.companyBucket = true;
+      } else {
+        // if empty → match either individual OR company bucket
+        filter.$or = [
+          { "individualBucket.individual": true },
+          { companyBucket: true },
+        ];
+      }
+
+      const tasks = await Task.find(filter)
+        .populate("assignee", "_id name role")
+        .populate("userEstimatedTime.user", "_id name role")
+        .populate("status.user", "_id name role")
+        .populate("dueDate.user", "_id name role")
+        .populate("startDate.user", "_id name role")
+        .populate("endDate.user", "_id name role")
+        .populate("createdBy", "_id name role")
+        .populate("company", "_id name role")
+        .populate("individualBucket.user", "_id name role")
+        .populate("evaluation.user", "_id name role")
+        .populate("statusHistory.changedBy", "_id name role")
+        .populate("comments.createdBy", "_id name role")
+        .populate("time_spent.user", "_id name role")
+        .populate("Accept.user", "_id name role")
+        .populate("actionEvents.user", "_id name role")
+        .sort({ createdAt: -1 });
+
+      return res.status(200).json({
+        count: tasks.length,
+        tasks,
+      });
+    } catch (error: any) {
+      console.error("Error getting task bucket:", error.message);
+      return res.status(500).json({
+        message: "Internal Server Error",
+        error: error.message,
+      });
+    }
+  }
+
+  async updateTaskDetails(req: AuthRequest, res: Response) {
+    try {
+      const { _id, company, ...rest } = req.body;
+
+      if (!_id || !company) {
+        return res
+          .status(400)
+          .json({ message: "Validate data error, Please login!" });
+      }
+
+      // Build dynamic update object
+      const updateData: Record<string, any> = {};
+
+      if (rest.entryTime) {
+        updateData.entryTime = rest.entryTime;
+      }
+      if (rest.entryDone !== undefined) {
+        updateData.entryDone = rest.entryDone;
+      }
+      if (rest.NOE !== undefined) {
+        updateData.noOfEntry = rest.NOE;
+      }
+      if (rest.description) {
+        updateData.taskDescription = rest.description;
+      }
+      if (rest.title) {
+        updateData.taskTitle = rest.title;
+      }
+
+      if (Object.keys(updateData).length === 0) {
+        return res.status(400).json({ message: "No valid fields to update" });
+      }
+
+      const updatedTask = await Task.findOneAndUpdate(
+        { _id, company },
+        { $set: updateData },
+        { new: true }
+      );
+
+      if (!updatedTask) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+
+      return res.status(200).json({
+        message: "Task updated successfully",
+        task: updatedTask,
+      });
+    } catch (error: any) {
+      console.error("Error updating task:", error.message);
+      return res.status(500).json({
+        message: "Internal Server Error",
+        error: error.message,
+      });
+    }
+  }
+
+  async individualBucket(req: AuthRequest, res: Response) {
+    try {
+      console.log("api call");
+      const user:any = req.user;
+      const tasks = await Task.find({
+        individualBucket: {
+          $elemMatch: { user: user.sub, individual: true },
+        },
+      });
+
+      return res.status(200).json({
+        message: "Individual bucket tasks fetched successfully",
+        count: tasks.length,
+        tasks,
+      });
+    } catch (error: any) {
+      console.error("Error fetching individual bucket:", error.message);
+      return res.status(500).json({
+        message: "Internal Server Error",
+        error: error.message,
+      });
+    }
+  }
+
+  // ✅ Company Bucket
+  async companyBucket(req: AuthRequest, res: Response) {
+    // try {
+    //   const tasks = await Task.find({ companyBucket: true });
+
+    //   return res.status(200).json({
+    //     message: "Company bucket tasks fetched successfully",
+    //     count: tasks.length,
+    //     tasks,
+    //   });
+    // } catch (error: any) {
+    //   console.error("Error fetching company bucket:", error.message);
+    //   return res.status(500).json({
+    //     message: "Internal Server Error",
+    //     error: error.message,
+    //   });
+    // }
   }
 
    async individualBucket(req: AuthRequest, res: Response) {

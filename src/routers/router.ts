@@ -12,9 +12,12 @@ import { verifyToken } from "../controller/verifyToken.controller";
 
 const router = Router();
 
-router.use("/attendance", attendanceRouter);
 router.use("/dashboard", dashboardRouter);
+router.use("/attendance", attendanceRouter);
+router.use("/suggestions", suggestionRouter);
+router.use("/feedbacks", feedbackRouter);
 router.use("/user", userRouter);
+router.use("/leads", leadRouter);
 router.use("/registration", registrationRouter);
 router.use("/auth", authRouter);
 router.use("/task", taskRouter);
