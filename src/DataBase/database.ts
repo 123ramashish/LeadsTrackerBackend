@@ -14,8 +14,8 @@ const connectDB = async (): Promise<void> => {
     console.log("Connecting to Database...");
 
     await mongoose.connect(URI, {
-      serverSelectionTimeoutMS: 30000, // wait up to 30s to find a server
-      socketTimeoutMS: 45000,          // wait up to 45s for I/O
+      serverSelectionTimeoutMS: 120 * 1000, // wait up to 30s to find a server
+      socketTimeoutMS: 300 * 1000,          // wait up to 45s for I/O
     });
 
     console.log("✅ MongoDB Connected Successfully");
