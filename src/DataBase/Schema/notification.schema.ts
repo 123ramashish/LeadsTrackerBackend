@@ -29,10 +29,7 @@ const notificationSchema = new Schema<INotification>(
         type: Schema.Types.ObjectId,
       },
     ],
-    createdAt: {
-      type: Date,
-      default: Date.now,
-    },
+    
   },
   { timestamps: false } 
 );

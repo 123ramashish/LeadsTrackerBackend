@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import { DateTime } from "luxon";
 import Task from "../DataBase/Schema/task.schema";
 import User from "../DataBase/Schema/user.schema";
+import { Notification_Create } from "../utils/notificationUtils";
 interface AuthRequest extends Request {
   user?: {
     sub: string;
@@ -138,6 +139,9 @@ export default class TaskController {
       });
 
       await task.save();
+      const message = `You have been assigned a task '${body.taskTitle}`;
+
+      await Notification_Create(body.assignee, body.taskTitle, message);
 
       return res.status(201).json({
         message: "Task created successfully",
@@ -183,7 +187,6 @@ export default class TaskController {
       const _entryDoneRange = normalize(entryDoneRange);
       const _noOfEntryRange = normalize(noOfEntryRange);
       const _individualBucket = normalize(individualBucket);
-
 
       const filter: any = {};
 
@@ -365,7 +368,7 @@ export default class TaskController {
 
   async getTaskById(req: AuthRequest, res: Response) {
     try {
-      const  user:any = req.user;
+      const user: any = req.user;
       const {
         limit = "10",
         skip = "0",
@@ -774,10 +777,10 @@ export default class TaskController {
     }
   }
 
-   async individualBucket(req: AuthRequest, res: Response) {
+  async individualBucket(req: AuthRequest, res: Response) {
     try {
       console.log("api call");
-      const user:any = req.user;
+      const user: any = req.user;
       const tasks = await Task.find({
         individualBucket: {
           $elemMatch: { user: user.sub, individual: true },
@@ -802,7 +805,6 @@ export default class TaskController {
   async companyBucket(req: AuthRequest, res: Response) {
     // try {
     //   const tasks = await Task.find({ companyBucket: true });
-
     //   return res.status(200).json({
     //     message: "Company bucket tasks fetched successfully",
     //     count: tasks.length,
