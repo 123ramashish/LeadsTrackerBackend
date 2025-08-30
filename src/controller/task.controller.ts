@@ -117,8 +117,8 @@ export default class TaskController {
         taskDescription: body.taskDescription,
         taskDate: startDate,
         estimatedTime: { unit, value: totalValue },
-        noOfEntry: body.noOfEntry,
-        entryTime: body.entryTime,
+        noOfEntry: body?.noOfEntry,
+        entryTime: body?.entryTime || null,
         assignee: body.assignee,
         userEstimatedTime,
         priority: body.priority,
@@ -363,9 +363,9 @@ export default class TaskController {
     }
   }
 
-  async getTaskById(req: Request, res: Response) {
+  async getTaskById(req: AuthRequest, res: Response) {
     try {
-      const { userId } = req.params;
+      const  user:any = req.user;
       const {
         limit = "10",
         skip = "0",
@@ -382,12 +382,12 @@ export default class TaskController {
         priority?: string;
       };
 
-      if (!userId) {
+      if (!user.sub) {
         return res.status(400).json({ message: "User ID is required" });
       }
 
       // Step 1: Build base query
-      const query: any = { assignee: userId };
+      const query: any = { assignee: user.sub };
 
       if (priority) query.priority = priority;
       if (taskDate) query.taskDate = new Date(taskDate);
@@ -423,7 +423,7 @@ export default class TaskController {
       const userTasks = tasks
         .map((task) => {
           const userStatusObj = task.status.find(
-            (s: any) => s.user?._id?.toString() === userId // ✅ after populate, s.user is an object
+            (s: any) => s.user?._id?.toString() === user.sub // ✅ after populate, s.user is an object
           );
 
           const currentStatus = userStatusObj?.status ?? "assignee";
@@ -437,7 +437,6 @@ export default class TaskController {
       const sortedTasks = userTasks
         .sort((a, b) => a.sortValue - b.sortValue)
         .slice(parseInt(skip), parseInt(skip) + parseInt(limit));
-
       return res.status(200).json({
         count: sortedTasks.length,
         tasks: sortedTasks.map(({ sortValue, userStatus, ...rest }) => ({
