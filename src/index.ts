@@ -7,8 +7,8 @@ import cookieParser from 'cookie-parser';
 import { CustomError } from './middlewares/custom.error';
 import router from './routers/router';
 import connectDB from './DataBase/database';
-import AutoController from './controller/auto.controller';
 import cron from 'node-cron';
+import { setupAutoEvents } from './controller/auto.controller';
 
 const app = express();
 
@@ -40,12 +40,9 @@ app.listen(process.env.PORT, async () => {
   await connectDB();
   console.log(`Listening ON port ${process.env.PORT || 8000}`);
 
-  // ⏰ Auto task scheduler
-  const autoController = new AutoController();
-
   // Run at 00:01 AM every day
   cron.schedule('1 0 * * *', async () => {
     console.log('[AUTO CRON] Starting auto update...');
-    await autoController.runAutoUpdate();
+   setupAutoEvents();
   });
 });
