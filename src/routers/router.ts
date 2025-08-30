@@ -12,6 +12,7 @@ import { verifyToken } from "../controller/verifyToken.controller";
 import suggestionRouter from "./suggestions.router";
 import feedbackRouter from "./feedback.router";
 import leadRouter from "./lead.router";
+import notificationRouter from "./notification.router";
 
 const router = Router();
 
@@ -27,6 +28,7 @@ router.use("/task", taskRouter);
 router.use("/repeatTask", repeatTaskRouter);
 router.use("/goal", goalRouter);
 router.use("/file", fileRouter);
+router.use("/notifications", notificationRouter);
 // router.use("/auth/verify", verifyToken);
 
 router.use("/", (req, res) => {
