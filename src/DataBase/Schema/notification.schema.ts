@@ -25,27 +25,22 @@ const notificationSchema = new Schema<INotification>(
       type: String,
       required: [true, "Title is required"],
       trim: true,
-      maxlength: [200, "Title cannot exceed 200 characters"]
     },
     description: {
       type: String,
       required: [true, "Description is required"],
       trim: true,
-      maxlength: [1000, "Description cannot exceed 1000 characters"]
     },
     createFor: [{
       type: String,
       required: [true, "CreateFor is required"],
-      index: true // Index for better query performance
     }],
     read: [{
       type: String,
-      index: true // Index for better query performance
     }],
     archived: {
       type: Boolean,
       default: false,
-      index: true
     },
     priority: {
       type: String,
@@ -77,26 +72,14 @@ const notificationSchema = new Schema<INotification>(
         trim: true
       }]
     },
-    createAt: {
-      type: Date,
-      default: Date.now,
-      index: true // Index for sorting by creation date
-    },
-    updatedAt: {
-      type: Date,
-      default: Date.now
-    }
+    
   },
   {
-    timestamps: false, // We're handling timestamps manually
+    timestamps: true, 
     versionKey: false
   }
 );
 
-// Compound indexes for better query performance
-notificationSchema.index({ createFor: 1, read: 1 });
-notificationSchema.index({ createFor: 1, archived: 1 });
-notificationSchema.index({ createFor: 1, createAt: -1 });
 
 // Pre-save middleware to update the updatedAt field
 notificationSchema.pre('findOneAndUpdate', function() {
@@ -133,7 +116,7 @@ notificationSchema.statics.findForUser = function(userId: string, options: any =
     query['archived'] = { $ne: true };
   }
   
-  return this.find(query).sort({ createAt: -1 });
+  return this.find(query).sort({ createdAt: -1 });
 };
 
 const Notification = mongoose.model<INotification>("Notification", notificationSchema);

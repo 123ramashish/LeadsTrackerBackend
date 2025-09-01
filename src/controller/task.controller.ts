@@ -111,7 +111,7 @@ export default class TaskController {
         user: userId,
         status: "assignee",
       }));
-
+console.log("task", body);
       // ✅ Create task
       const task = new Task({
         taskTitle: body.taskTitle,
@@ -148,7 +148,7 @@ export default class TaskController {
         task,
       });
     } catch (error: any) {
-      console.error("Error creating task:", error.message);
+      console.error("Error creating task:", error);
       return res.status(500).json({ message: error.message });
     }
   }
