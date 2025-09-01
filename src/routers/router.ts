@@ -26,7 +26,7 @@ router.use("/registration", registrationRouter);
 router.use("/auth", authRouter);
 router.use("/task", taskRouter);
 router.use("/repeatTask", repeatTaskRouter);
-router.use("/goal", goalRouter);
+router.use("/goals", goalRouter);
 router.use("/file", fileRouter);
 router.use("/notifications", notificationRouter);
 // router.use("/auth/verify", verifyToken);
