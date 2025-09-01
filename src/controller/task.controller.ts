@@ -111,7 +111,7 @@ export default class TaskController {
         user: userId,
         status: "assignee",
       }));
-console.log("task", body);
+      console.log("task", body);
       // ✅ Create task
       const task = new Task({
         taskTitle: body.taskTitle,
@@ -413,42 +413,38 @@ console.log("task", body);
         .populate("company", "_id name role")
         .populate("statusHistory.changedBy", "_id name role")
         .lean();
+      // Step 3: Apply per-user transformation
+      const transformedTasks = await this.transformTaskData(tasks, user?.sub);
 
-      // Step 3: Process status per user
+      // Step 4: Process status per user
       const statusOrder: Record<string, number> = {
         expired: 1,
         pause: 2,
-        inprogress: 3,
+        "in progress": 3,
         assignee: 4,
         completed: 5,
+        cancel: 6,
       };
 
-      const userTasks = tasks
-        .map((task) => {
-          const userStatusObj = task.status.find(
-            (s: any) => s.user?._id?.toString() === user.sub // ✅ after populate, s.user is an object
-          );
-
-          const currentStatus = userStatusObj?.status ?? "assignee";
-          const sortValue = statusOrder[currentStatus] ?? 99;
-
+      const userTasks = transformedTasks
+        .map((task: any) => {
+          const currentStatus =
+            task.status?.status?.toLowerCase() ?? "assignee";
+          const sortValue: any = statusOrder[currentStatus] ?? 99;
           return { ...task, userStatus: currentStatus, sortValue };
         })
-        .filter((task) => !status || task.userStatus === status);
+        .filter((task: any) => !status || task.userStatus === status);
 
-      // Step 4: Sort & paginate
+      // Step 5: Sort & paginate
       const sortedTasks = userTasks
-        .sort((a, b) => a.sortValue - b.sortValue)
+        .sort((a: any, b: any) => a.sortValue - b.sortValue)
         .slice(parseInt(skip), parseInt(skip) + parseInt(limit));
       return res.status(200).json({
         count: sortedTasks.length,
-        tasks: sortedTasks.map(({ sortValue, userStatus, ...rest }) => ({
-          ...rest,
-          userStatus,
-        })),
+        tasks: sortedTasks.map(({ sortValue, ...rest }) => rest),
       });
     } catch (error: any) {
-      console.error("Error getting tasks by user ID:", error.message);
+      console.error("Error getting tasks by user ID:", error);
       return res
         .status(500)
         .json({ message: "Internal Server Error", error: error.message });
@@ -822,5 +818,85 @@ console.log("task", body);
   // ✅ Utility: Get local timezone
   private async getLocalTimeZone(): Promise<string> {
     return Intl.DateTimeFormat().resolvedOptions().timeZone;
+  }
+  private async transformTaskData(apiTasks: any[], loginUserId: string) {
+    return apiTasks.map((task) => {
+      const loginId = String(loginUserId);
+
+      const userAssignee = task.assignee?.find(
+        (a: any) => String(a?._id) === loginId
+      );
+
+      const userEstimatedTime = task.userEstimatedTime?.find(
+        (u: any) => String(u?.user?._id) === loginId
+      );
+
+      const userStatus = task.status?.find(
+        (s: any) => String(s?.user?._id) === loginId
+      );
+
+      const userStartDate = task.startDate?.find(
+        (s: any) => String(s?.user ?? s) === loginId
+      );
+
+      const userTargetDate = task.endDate?.find(
+        (e: any) => String(e?.user ?? e) === loginId
+      );
+
+      const userDueDate = task.dueDate?.find(
+        (d: any) => String(d?.user?._id) === loginId
+      );
+
+      const userEvaluation = task.evaluation?.find(
+        (d: any) => String(d?.user?._id) === loginId
+      );
+
+      const userStatusHistory = task.statusHistory?.find(
+        (d: any) => String(d?.changedBy?._id) === loginId
+      );
+
+      const userAccept = task.accept?.find(
+        (s: any) => String(s?.user?._id) === loginId
+      );
+
+      const userActionEvents = task.actionEvents?.find(
+        (s: any) => String(s?.user?._id) === loginId
+      );
+
+      const userTimeSpent = task.time_spent?.find(
+        (t: any) => String(t?.user ?? t) === loginId
+      );
+
+      return {
+        id: task._id,
+        name: task.taskTitle,
+        description: task.taskDescription,
+        assignee: userAssignee ?? null,
+        priority: task.priority,
+        taskDate: task.taskDate,
+        estimateTime: task.estimatedMinutes,
+        userEstimatedTime: userEstimatedTime ?? null,
+        spendTime: userTimeSpent ?? null,
+        noe: task.assignee?.length ?? 0,
+        location: task.location,
+        tags: task.tags ?? [],
+        comments: task.comments ?? [],
+        createdBy: task.createdBy,
+        status: userStatus ?? null,
+        NOE: task.noOfEntry ?? 0,
+        entryDone: task.entryDone ?? 0,
+        entryTime: task.entryTime ?? { unit: "", value: 0 },
+        accept: userAccept ?? null,
+        startDate: userStartDate ?? null,
+        targetDate: userTargetDate ?? null,
+        dueDate: userDueDate ?? null,
+        userEvaluation: userEvaluation ?? null,
+        statusHistory: userStatusHistory ?? null,
+        company: task.company ?? null,
+        individualBucket: task.individualBucket ?? null,
+        companyBucket: task.companyBucket ?? null,
+        actionEvents: userActionEvents ?? null,
+      };
+    });
   }
 }

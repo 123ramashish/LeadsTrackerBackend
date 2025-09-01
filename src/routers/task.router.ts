@@ -15,7 +15,7 @@ taskRouter.get("/individualBucket", authenticate,taskController.individualBucket
 taskRouter.put("/status", authenticate, taskController.updateTaskStatus);
 taskRouter.put("/status", authenticate, taskController.updateTaskStatus);
 taskRouter.post("/message", authenticate,taskController.addTaskMessage); 
-taskRouter.get("/:userId",authenticate, taskController.getTaskById);
+taskRouter.get("/:userId",authenticate, taskController.getTaskById.bind(taskController));
 taskRouter.put("/timeline", authenticate, taskController.updateTaskTimeline);
 taskRouter.put("/details", authenticate, taskController.updateTaskDetails);
 taskRouter.put("/individualBucket", authenticate, taskController.individualBucket);
