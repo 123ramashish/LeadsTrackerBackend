@@ -119,7 +119,7 @@ export default class TaskController {
         taskDate: startDate,
         estimatedTime: { unit, value: totalValue },
         noOfEntry: body?.noOfEntry,
-        entryTime: body?.entryTime || null,
+        entryTime: body?.entryTime,
         assignee: body.assignee,
         userEstimatedTime,
         priority: body.priority,
