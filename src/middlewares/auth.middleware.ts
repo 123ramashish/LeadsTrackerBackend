@@ -1,3 +1,5 @@
+import * as dotenv from 'dotenv';
+dotenv.config();
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import User from "../DataBase/Schema/user.schema";
@@ -19,12 +21,11 @@ export const authenticate = async (
     }
 
     const token = authHeader.split(" ")[1];
-
     try {
       // ✅ Verify access token
       const decoded = jwt.verify(
         token,
-        process.env.JWT_SECRET || "secret"
+        process.env.JWT_SECRET || "secret" 
       ) as any;
       req.user = decoded;
       return next();
@@ -32,6 +33,7 @@ export const authenticate = async (
       // ✅ Token expired or invalid → check if it's expiration error
       if (error.name === "TokenExpiredError") {
         const decoded = jwt.decode(token) as any;
+        console.log("decoded ",decoded)
         const userId = decoded?.sub;
 
         if (!userId) return res.status(401).json({ message: "Invalid token" });
@@ -55,11 +57,8 @@ export const authenticate = async (
           // Attach user & new token in header for client to update
           req.user = { sub: user._id, email: user.email, role: user.userRole ,company:user.company};
           res.setHeader("x-new-access-token", newAccessToken);
-          res.cookie("accessToken", newAccessToken, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            sameSite: "strict",
-          });
+          console.log("newAccessToken",newAccessToken)
+          res.cookie("accessToken", newAccessToken);
 
           return next();
         } catch (refreshError) {

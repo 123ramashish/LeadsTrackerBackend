@@ -48,8 +48,7 @@ export default class AuthController {
   }
 
   private async generateTokens(user: any) {
-    const payload = { sub: user._id, email: user.email, role: user.userRole };
-
+    const payload = { sub: user?._id, email: user?.email, role: user.userRole,phone:user?.phone, company: user?.company };
     const accessToken = jwt.sign(payload, process.env.JWT_SECRET || "secret", {
       expiresIn: "1h",
     });
@@ -71,29 +70,10 @@ export default class AuthController {
         company: user.company,
       },
       accessToken,
-      refreshToken,
     };
   }
 
-  async refreshToken(req: Request, res: Response) {
-    try {
-      const { token } = req.body;
-      if (!token) return res.status(400).json({ message: "Token is required" });
-
-      const decoded = jwt.verify(
-        token,
-        process.env.JWT_SECRET || "secret"
-      ) as any;
-      const user = await User.findById(decoded.sub);
-      if (!user) return res.status(401).json({ message: "Invalid user" });
-
-      const tokens = await this.generateTokens(user);
-
-      return res.status(200).json(tokens);
-    } catch (error: any) {
-      return res.status(401).json({ message: "Invalid refresh token" });
-    }
-  }
+  
 
   private async updateLastLogin(userId: string) {
     console.log("Updating last login for user:", userId);
