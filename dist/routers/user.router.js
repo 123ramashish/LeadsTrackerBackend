@@ -10,7 +10,7 @@ const userRouter = (0, express_1.Router)();
 // Create user (admin only)
 userRouter.post("/create", auth_middleware_1.authenticate, (0, auth_middleware_1.authorizeRoles)(["admin", "teamLeader"]), user_controller_1.default.createUser);
 // Get all users (admin and team leaders)
-userRouter.get("/", auth_middleware_1.authenticate, (0, auth_middleware_1.authorizeRoles)(["admin", "teamLeader"]), user_controller_1.default.getUsers);
+userRouter.get("/", auth_middleware_1.authenticate, user_controller_1.default.getUsers);
 // Get single user
 userRouter.get("/:id", auth_middleware_1.authenticate, user_controller_1.default.getUserById);
 // Update user

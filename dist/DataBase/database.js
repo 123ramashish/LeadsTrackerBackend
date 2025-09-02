@@ -36,7 +36,6 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-// src/config/db.ts
 const dotenv = __importStar(require("dotenv"));
 const mongoose_1 = __importDefault(require("mongoose"));
 dotenv.config();
@@ -48,8 +47,8 @@ const connectDB = async () => {
         }
         console.log("Connecting to Database...");
         await mongoose_1.default.connect(URI, {
-            serverSelectionTimeoutMS: 30000, // wait up to 30s to find a server
-            socketTimeoutMS: 45000, // wait up to 45s for I/O
+            serverSelectionTimeoutMS: 120 * 1000, // wait up to 30s to find a server
+            socketTimeoutMS: 300 * 1000, // wait up to 45s for I/O
         });
         console.log("✅ MongoDB Connected Successfully");
     }

@@ -139,7 +139,12 @@ const TaskSchema = new mongoose_2.Schema({
         required: true,
     },
     entryTime: {
-        type: EstimatedTimeSchema,
+        unit: {
+            type: String,
+        },
+        value: {
+            type: Number,
+        },
     },
     noOfEntry: Number,
     entryDone: Number,

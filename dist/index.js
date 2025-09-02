@@ -45,8 +45,8 @@ const cookie_parser_1 = __importDefault(require("cookie-parser"));
 const custom_error_1 = require("./middlewares/custom.error");
 const router_1 = __importDefault(require("./routers/router"));
 const database_1 = __importDefault(require("./DataBase/database"));
-const auto_controller_1 = __importDefault(require("./controller/auto.controller"));
 const node_cron_1 = __importDefault(require("node-cron"));
+const auto_controller_1 = require("./controller/auto.controller");
 const app = (0, express_1.default)();
 // middlewares
 app.use((0, cors_1.default)());
@@ -71,11 +71,9 @@ app.use((err, req, res, next) => {
 app.listen(process.env.PORT, async () => {
     await (0, database_1.default)();
     console.log(`Listening ON port ${process.env.PORT || 8000}`);
-    // ⏰ Auto task scheduler
-    const autoController = new auto_controller_1.default();
     // Run at 00:01 AM every day
     node_cron_1.default.schedule('1 0 * * *', async () => {
         console.log('[AUTO CRON] Starting auto update...');
-        await autoController.runAutoUpdate();
+        (0, auto_controller_1.setupAutoEvents)();
     });
 });
