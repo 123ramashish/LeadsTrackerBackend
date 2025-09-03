@@ -4,7 +4,7 @@
 cd /home/intertech/taskify-backend-main
 
 # Restart the PM2 process
-pm2 restart public/src --name intertech-backend
+pm2 restart dist/index.js --name intertech-backend
 
 # List all PM2 processes to confirm restart
 pm2 list
