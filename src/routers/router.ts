@@ -32,6 +32,6 @@ router.use("/notifications", notificationRouter);
 // router.use("/auth/verify", verifyToken);
 
 router.use("/", (req, res) => {
-  res.status(200).json({ message: "Welcome to the Task Management API" });
+  res.status(200).json({ message: "Welcome to the Task Management API!" });
 });
 export default router;
