@@ -19,6 +19,10 @@ taskRouter.put("/timeline", authenticate, taskController.updateTaskTimeline);
 taskRouter.put("/details", authenticate, taskController.updateTaskDetails);
 taskRouter.put("/individualBucket", authenticate, taskController.individualBucket);
 taskRouter.put("/companyBucket", authenticate, taskController.companyBucket);
+taskRouter.put("/bucketShift", authenticate, taskController.bucketShift);
+taskRouter.put("/estimatedTime", authenticate, taskController.estimatedTimeUpdate);
+taskRouter.put("/tags", authenticate, taskController.updateTags);
+
 // taskRouter.delete("/:id",  taskController.deleteTask);
 
 export default taskRouter;

@@ -148,6 +148,7 @@ export default class LeadController {
       dueDate: new Date(
         DateTime.now().setZone(localTimeZone).endOf("day").toISO()!
       ),
+      
       assignee: new mongoose.Types.ObjectId(assign),
       status: {
         user: new mongoose.Types.ObjectId(user.sub),

@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import { DateTime } from "luxon";
 import Task from "../DataBase/Schema/task.schema";
 import User from "../DataBase/Schema/user.schema";
+import { start } from "repl";
 interface AuthRequest extends Request {
   user?: {
     sub: string;
@@ -87,17 +88,24 @@ export default class TaskController {
 
       // ✅ Bucket logic
       let individualBucket: any[] = [];
-      let companyBucket = false;
       if (startDate > new Date() && !body.bucket) {
         body.bucket = "individual";
+      }
+      const now = new Date();
+      const startOfToday = new Date(now.setHours(0, 0, 0, 0));
+      const endOfToday = new Date(now.setHours(23, 59, 59, 999));
+
+      if (startDate >= startOfToday && startDate <= endOfToday && body.bucket) {
+        return res.status(400).json({
+          message:
+            "Cannot assign to bucket for today tasks. Please don't save for future",
+        });
       }
       if (body.bucket === "individual") {
         individualBucket = body.assignee.map((userId: string) => ({
           user: userId,
           individual: true,
         }));
-      } else if (body.bucket === "company") {
-        companyBucket = true;
       } else {
         individualBucket = body.assignee.map((userId: string) => ({
           user: userId,
@@ -133,7 +141,6 @@ export default class TaskController {
         status,
         company: new mongoose.Types.ObjectId(body.company),
         individualBucket,
-        companyBucket,
         divideTime: body.divide,
       });
 
@@ -183,7 +190,6 @@ export default class TaskController {
       const _entryDoneRange = normalize(entryDoneRange);
       const _noOfEntryRange = normalize(noOfEntryRange);
       const _individualBucket = normalize(individualBucket);
-
 
       const filter: any = {};
 
@@ -414,8 +420,8 @@ export default class TaskController {
       // Step 3: Process status per user
       const statusOrder: Record<string, number> = {
         expired: 1,
-        pause: 2,
-        inprogress: 3,
+        "in progress": 2,
+        pause: 3,
         assignee: 4,
         completed: 5,
       };
@@ -457,6 +463,26 @@ export default class TaskController {
     try {
       const { id, company, status, loginUser, address } = req.body;
       console.log("body", req.body);
+      if (status === "in progress") {
+        const existingTask = await Task.findOne({
+          company,
+          assignee: loginUser.id,
+          status: {
+            $elemMatch: {
+              user: loginUser.id,
+              status: "in progress",
+            },
+          },
+        });
+
+        if (existingTask) {
+          return res.status(400).json({
+            success: false,
+            message: "Already has a task in progress.",
+            taskId: existingTask._id,
+          });
+        }
+      }
       const task = await Task.findOne({
         _id: new mongoose.Types.ObjectId(id),
         company: new mongoose.Types.ObjectId(company),
@@ -464,6 +490,18 @@ export default class TaskController {
 
       if (!task) {
         return res.status(404).json({ message: "Task not found" });
+      }
+      if (status === "completed") {
+        const hasUserComment = task.comments.some(
+          (c) => String(c.createdBy) === String(loginUser.id)
+        );
+
+        if (!hasUserComment) {
+          return res.status(400).json({
+            success: false,
+            message: "You must add a comment before completing the task.",
+          });
+        }
       }
       const localTimeZone = DateTime.local().zoneName;
 
@@ -511,6 +549,7 @@ export default class TaskController {
         statusEntry.status = status;
       } else {
         task.status.push({ user: userId, status });
+        task.Accept.push({ user: userId, status: true });
       }
 
       // Push new entry into statusHistory
@@ -663,7 +702,7 @@ export default class TaskController {
   async getTaskBucket(req: AuthRequest, res: Response) {
     try {
       const { bucketType, company } = req.query as {
-        bucketType?: "individual" | "company" | "";
+        bucketType?: "individual" | "";
         company?: string;
       };
 
@@ -678,14 +717,6 @@ export default class TaskController {
       // filter by bucket type
       if (bucketType === "individual") {
         filter["individualBucket.individual"] = true;
-      } else if (bucketType === "company") {
-        filter.companyBucket = true;
-      } else {
-        // if empty → match either individual OR company bucket
-        filter.$or = [
-          { "individualBucket.individual": true },
-          { companyBucket: true },
-        ];
       }
 
       const tasks = await Task.find(filter)
@@ -778,7 +809,7 @@ export default class TaskController {
   async individualBucket(req: AuthRequest, res: Response) {
     try {
       console.log("api call");
-      const user:any = req.user;
+      const user: any = req.user;
       const tasks = await Task.find({
         individualBucket: {
           $elemMatch: { user: user.sub, individual: true },
@@ -801,21 +832,174 @@ export default class TaskController {
 
   // ✅ Company Bucket
   async companyBucket(req: AuthRequest, res: Response) {
-    // try {
-    //   const tasks = await Task.find({ companyBucket: true });
+    try {
+      const tasks = await Task.find({ companyBucket: true });
 
-    //   return res.status(200).json({
-    //     message: "Company bucket tasks fetched successfully",
-    //     count: tasks.length,
-    //     tasks,
-    //   });
-    // } catch (error: any) {
-    //   console.error("Error fetching company bucket:", error.message);
-    //   return res.status(500).json({
-    //     message: "Internal Server Error",
-    //     error: error.message,
-    //   });
-    // }
+      return res.status(200).json({
+        message: "Company bucket tasks fetched successfully",
+        count: tasks.length,
+        tasks,
+      });
+    } catch (error: any) {
+      console.error("Error fetching company bucket:", error.message);
+      return res.status(500).json({
+        message: "Internal Server Error",
+        error: error.message,
+      });
+    }
+  }
+  async bucketShift(req: AuthRequest, res: Response) {
+    try {
+      const { taskId, userId, toBucket } = req.body;
+      console.log("body", req.body);
+
+      if (!taskId || !userId || !toBucket) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+      const task = await Task.findById(taskId);
+      if (!task) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+      // Update individualBucket
+      const individualEntry = task.individualBucket.find(
+        (entry: any) => entry.user.toString() === userId
+      );
+      if (individualEntry) {
+        individualEntry.individual = toBucket === "individual";
+      }
+      // Update companyBucket
+      if (toBucket === "company") {
+        task.companyBucket = true;
+      } else if (toBucket === "none") {
+        task.companyBucket = false;
+      }
+      await task.save();
+
+      return res.status(200).json({
+        message: "Bucket updated successfully",
+        task,
+      });
+    } catch (error: any) {
+      console.error("Error updating bucket:", error.message);
+      return res.status(500).json({
+        message: "Internal Server Error",
+        error: error.message,
+      });
+    }
+  }
+  // controllers/taskController.ts
+  // controllers/taskController.ts
+  async estimatedTimeUpdate(req: AuthRequest, res: Response) {
+    try {
+      const { _id, userEstimatedTimes } = req.body;
+      // console.log("userEstimatedTimes", JSON.stringify(userEstimatedTimes));
+
+      if (!_id || !userEstimatedTimes || !Array.isArray(userEstimatedTimes)) {
+        return res.status(400).json({ message: "Invalid data format" });
+      }
+
+      const task = await Task.findById(_id);
+      if (!task) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+
+      // Update each user's estimated time
+      userEstimatedTimes.forEach((update: any) => {
+        const entry = task.userEstimatedTime.find(
+          (uet: any) => uet.user.toString() === update.userId
+        );
+        if (entry) {
+          entry.estimatedTime = {
+            value: update.estimatedTime.value,
+            unit: update.estimatedTime.unit,
+          };
+        }
+      });
+
+      // Mark nested array as modified so mongoose saves changes
+      task.markModified("userEstimatedTime");
+
+      // Conversion map → minutes
+      const unitToMinutes: Record<string, number> = {
+        Minutes: 1,
+        Hours: 60,
+        Days: 1440,
+      };
+
+      // Sum total minutes
+      const totalMinutes = task.userEstimatedTime.reduce(
+        (sum: number, uet: any) => {
+          const value = uet.estimatedTime?.value || 0;
+          const unit = uet.estimatedTime?.unit || "Minutes";
+          return sum + value * (unitToMinutes[unit] || 1);
+        },
+        0
+      );
+
+      // Decide best display unit
+      let finalValue: number;
+      let finalUnit: "Minutes" | "Hours" | "Days";
+
+      if (totalMinutes < 60) {
+        finalValue = totalMinutes;
+        finalUnit = "Minutes";
+      } else if (totalMinutes < 1440) {
+        finalValue = +(totalMinutes / 60).toFixed(2);
+        finalUnit = "Hours";
+      } else {
+        finalValue = +(totalMinutes / 1440).toFixed(2);
+        finalUnit = "Days";
+      }
+
+      task.estimatedTime = {
+        value: finalValue,
+        unit: finalUnit,
+      };
+
+      await task.save();
+
+      return res.status(200).json({
+        message: "Estimated times updated successfully",
+        task,
+      });
+    } catch (error: any) {
+      console.error("Error updating estimated times:", error.message);
+      return res.status(500).json({
+        message: "Internal Server Error",
+        error: error.message,
+      });
+    }
+  }
+  async updateTags(req: Request, res: Response) {
+    try {
+      const { id, company, tags } = req.body;
+      if (!id || !company || !Array.isArray(tags)) {
+        return res
+          .status(400)
+          .json({ message: "Task ID, Company ID, and tags are required" });
+      }
+      const task = await Task.findOneAndUpdate(
+        {
+          _id: new mongoose.Types.ObjectId(id),
+          company: new mongoose.Types.ObjectId(company),
+        },
+        { tags },
+        { new: true }
+      );
+      if (!task) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+      return res.status(200).json({
+        message: "Tags updated successfully",
+        task,
+      });
+    } catch (error: any) {
+      console.error("Error updating tags:", error.message);
+      return res.status(500).json({
+        message: "Internal Server Error",
+        error: error.message,
+      });
+    }
   }
 
   // ✅ Utility: Get local timezone
