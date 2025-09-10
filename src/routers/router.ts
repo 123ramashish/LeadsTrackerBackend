@@ -8,10 +8,10 @@ import repeatTaskRouter from "./repeatTask.router";
 import fileRouter from "./file.router";
 import dashboardRouter from "./dashboard.router";
 import attendanceRouter from "./attendance.router";
-import leadRouter from "./lead.router";
+import { verifyToken } from "../controller/verifyToken.controller";
 import suggestionRouter from "./suggestions.router";
 import feedbackRouter from "./feedback.router";
-import leaveRouter from "./leave.router";
+import leadRouter from "./lead.router";
 import notificationRouter from "./notification.router";
 
 const router = Router();
@@ -26,10 +26,12 @@ router.use("/registration", registrationRouter);
 router.use("/auth", authRouter);
 router.use("/task", taskRouter);
 router.use("/repeatTask", repeatTaskRouter);
-router.use("/goal", goalRouter);
+router.use("/goals", goalRouter);
 router.use("/file", fileRouter);
-router.use("/notification", notificationRouter);
+router.use("/notifications", notificationRouter);
+// router.use("/auth/verify", verifyToken);
+
 router.use("/", (req, res) => {
-  res.status(200).json({ message: "Welcome to the Task Management API" });
+  res.status(200).json({ message: "Welcome to the Task Management API!" });
 });
 export default router;

@@ -10,6 +10,7 @@ export interface IRepeatGoal extends Document {
   company: mongoose.Types.ObjectId;
   repeatTime: Date;
   status?: "pending" | "in-progress" | "completed";
+  category?: string;
 }
 
 const RepeatGoalSchema: Schema = new Schema<IRepeatGoal>(
@@ -28,6 +29,10 @@ const RepeatGoalSchema: Schema = new Schema<IRepeatGoal>(
       minlength: [5, "Description must be at least 5 characters"],
       maxlength: [500, "Description must be at most 500 characters"],
     },
+    category: {
+      type: String,
+      trim: true,
+      },
     repeatInterval: {
       type: String,
       enum: ["daily", "weekly", "monthly", "quarterly", "annually"],

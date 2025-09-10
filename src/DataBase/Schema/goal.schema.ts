@@ -7,6 +7,7 @@ export interface IGoal extends Document {
   endDate: Date;
   user: mongoose.Types.ObjectId;
   company: mongoose.Types.ObjectId;
+  category?: string;
 }
 
 const GoalSchema: Schema = new Schema<IGoal>(
@@ -24,6 +25,10 @@ const GoalSchema: Schema = new Schema<IGoal>(
       trim: true,
       minlength: [5, "Description must be at least 5 characters"],
       maxlength: [500, "Description must be at most 500 characters"],
+    },
+    category: {
+      type: String,
+      trim: true,
     },
     status: {
       type: String,

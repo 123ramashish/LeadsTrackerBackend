@@ -30,7 +30,7 @@ export const sendPushNotification = async (title: string, body: string) => {
       .then(() => {
         // console.log('✅ Notification sent successfully');
       })
-      .catch(async (err) => {
+      .catch(async (err:any) => {
         console.error('❌ Notification error:', err);
         if (err.statusCode === 410 || err.statusCode === 404) {
           // console.log('🗑️ Removing stale subscription:', sub._id);

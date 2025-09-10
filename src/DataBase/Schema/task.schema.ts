@@ -176,7 +176,12 @@ const TaskSchema = new Schema(
       required: true,
     },
     entryTime: {
-      type: EstimatedTimeSchema,
+      unit: {
+        type: String,
+      },
+      value: {
+        type: Number,
+      },
     },
     noOfEntry: Number,
     entryDone: Number,

@@ -14,10 +14,11 @@ taskRouter.get("/bucket", auth_middleware_1.authenticate, taskController.getTask
 taskRouter.get("/", auth_middleware_1.authenticate, taskController.getAllTask);
 taskRouter.get("/totalTaskAmountTime", auth_middleware_1.authenticate, taskController.getTaskAmountTime);
 taskRouter.get("/message", auth_middleware_1.authenticate, taskController.getTaskMessages);
+taskRouter.get("/individualBucket", auth_middleware_1.authenticate, taskController.individualBucket);
 taskRouter.put("/status", auth_middleware_1.authenticate, taskController.updateTaskStatus);
 taskRouter.put("/status", auth_middleware_1.authenticate, taskController.updateTaskStatus);
 taskRouter.post("/message", auth_middleware_1.authenticate, taskController.addTaskMessage);
-taskRouter.get("/:userId", auth_middleware_1.authenticate, taskController.getTaskById);
+taskRouter.get("/:userId", auth_middleware_1.authenticate, taskController.getTaskById.bind(taskController));
 taskRouter.put("/timeline", auth_middleware_1.authenticate, taskController.updateTaskTimeline);
 taskRouter.put("/details", auth_middleware_1.authenticate, taskController.updateTaskDetails);
 taskRouter.put("/individualBucket", auth_middleware_1.authenticate, taskController.individualBucket);

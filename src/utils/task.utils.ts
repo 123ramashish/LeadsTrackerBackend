@@ -3,6 +3,7 @@ import RepeatTask from "../DataBase/Schema/repeatTask.schema";
 import User from "../DataBase/Schema/user.schema";
 import { DateTime } from "luxon";
 import mongoose from "mongoose";
+import { Notification_Create } from "./notificationUtils";
 
 const getLocalTimeZone = async (): Promise<string> => {
   return Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -101,6 +102,9 @@ export const createTaskFromRepeat = async (repeatTask: any) => {
   });
 
   await task.save();
+  const message = `You have been assigned a task '${repeatTask.taskTitle}`;
+
+  await Notification_Create(assignees, repeatTask.taskTitle, message);
 
   // Add task ID to repeatTask's repeatTaskId array
   await RepeatTask.updateOne(

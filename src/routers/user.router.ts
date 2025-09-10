@@ -16,7 +16,6 @@ userRouter.post(
 userRouter.get(
   "/",
   authenticate,
-  authorizeRoles(["admin", "teamLeader"]),
   UserController.getUsers
 );
 

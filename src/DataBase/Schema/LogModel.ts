@@ -17,12 +17,8 @@ const logSchema = new Schema<ILog>({
   errorName: { type: String },
   errorDescription: { type: String },
   code: { type: String },
-  createdAt: {
-    type: String,
-    default: () => new Date().toLocaleString("en-GB"), 
-  },
   other: { type: String },
-});
+},{timestamps:true});
 
 const Log: Model<ILog> =
   (models.Log as Model<ILog>) || model<ILog>("Log", logSchema);

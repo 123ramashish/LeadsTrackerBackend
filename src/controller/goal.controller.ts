@@ -150,6 +150,7 @@ export default class GoalController {
         const repeatGoalData: any = {
           title: name,
           description,
+          category,
           repeatInterval: repeatType,
           startDate,
           endDate: DateTime.fromISO(targetDate, {
@@ -158,7 +159,7 @@ export default class GoalController {
           user: new mongoose.Types.ObjectId(user.sub),
           status: "pending",
           completedDates: [],
-          company:user.company
+          company:user?.company
         };
 
         // ✅ Optionally store repeatConfig info inside description or extra fields
@@ -173,11 +174,13 @@ export default class GoalController {
         const normalGoal = new goalSchema({
           title: name,
           description,
+          category,
           status: "pending",
           endDate: DateTime.fromISO(targetDate, {
             zone: localTimeZone,
           }).toJSDate(),
           user: new mongoose.Types.ObjectId(user.sub),
+          company:user?.company
         });
 
         createdGoal = await normalGoal.save();
@@ -196,8 +199,12 @@ export default class GoalController {
   // ✅ Get All Goals
   static async getGoals(req: Request, res: Response) {
     try {
+      const user = (req as AuthRequest).user;
+      if (!user) {
+        return res.status(401).json({ message: "Unauthorized: No user data" });
+      }
       const { userId, page = 1, limit = 10 } = req.query;
-      const filter: any = {};
+      const filter: any = {company:user?.company};
       if (userId) filter.user = userId;
 
       const goals = await goalSchema
@@ -207,7 +214,6 @@ export default class GoalController {
         .sort({ createdAt: -1 });
 
       const total = await goalSchema.countDocuments(filter);
-
       return res.status(200).json({ total, goals });
     } catch (error: any) {
       console.error("Error fetching goals:", error.message);
@@ -218,8 +224,12 @@ export default class GoalController {
   // ✅ Get Single Goal
   static async getGoalById(req: Request, res: Response) {
     try {
+       const user = (req as AuthRequest).user;
+      if (!user) {
+        return res.status(401).json({ message: "Unauthorized: No user data" });
+      }
       const { id } = req.params;
-      const goal = await goalSchema.findById(id);
+      const goal = await goalSchema.findById({_id: id,company:user?.company });
       if (!goal) return res.status(404).json({ message: "Goal not found" });
 
       return res.status(200).json(goal);
@@ -232,10 +242,14 @@ export default class GoalController {
   // ✅ Update Goal
   static async updateGoal(req: Request, res: Response) {
     try {
+       const user = (req as AuthRequest).user;
+      if (!user) {
+        return res.status(401).json({ message: "Unauthorized: No user data" });
+      }
       const { id } = req.params;
       const updateData = req.body;
 
-      const goal = await goalSchema.findByIdAndUpdate(id, updateData, {
+      const goal = await goalSchema.findByIdAndUpdate({_id:id}, updateData, {
         new: true,
       });
       if (!goal) return res.status(404).json({ message: "Goal not found" });
@@ -253,7 +267,7 @@ export default class GoalController {
   static async deleteGoal(req: Request, res: Response) {
     try {
       const { id } = req.params;
-      const goal = await goalSchema.findByIdAndDelete(id);
+      const goal = await goalSchema.findByIdAndDelete({_id: id});
       if (!goal) return res.status(404).json({ message: "Goal not found" });
 
       return res.status(200).json({ message: "Goal deleted successfully" });

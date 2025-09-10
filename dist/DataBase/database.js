@@ -37,24 +37,24 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const dotenv = __importStar(require("dotenv"));
-dotenv.config();
 const mongoose_1 = __importDefault(require("mongoose"));
+dotenv.config();
 const URI = process.env.MONGODB_URI;
 const connectDB = async () => {
     try {
         if (!URI) {
             throw new Error("MONGODB_URI is not defined in environment variables.");
         }
-        console.log("Connecting to Database...", URI);
-        await mongoose_1.default.connect(URI);
-        console.log("Connected Successfully");
+        console.log("Connecting to Database...");
+        await mongoose_1.default.connect(URI, {
+            serverSelectionTimeoutMS: 120 * 1000, // wait up to 30s to find a server
+            socketTimeoutMS: 300 * 1000, // wait up to 45s for I/O
+        });
+        console.log("✅ MongoDB Connected Successfully");
     }
     catch (error) {
-        console.log(error);
+        console.error("❌ MongoDB Connection Error:", error);
         process.exit(1);
     }
 };
-connectDB().then(() => {
-    console.log("DataBase Connected");
-});
 exports.default = connectDB;

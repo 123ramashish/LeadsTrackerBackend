@@ -37,7 +37,6 @@ export default class AttendanceController {
         punchInLocation?: string;
         punchOutLocation?: string;
       } = req.body;
-      console.log("body", req.body, user);
 
       if (!user?.sub) {
         return res.status(401).json({ message: "Authentication required" });
@@ -67,6 +66,7 @@ export default class AttendanceController {
 
       // Punch Out
       if (punchOut) {
+        console.log("punchout call")
         const activeRecord = await attendanceSchema
           .findOne({
             user: new mongoose.Types.ObjectId(user.sub),
@@ -127,26 +127,24 @@ export default class AttendanceController {
   }
 
   /** GET /attendance — Fetch Attendance */
-  static async getAttendance(req: AuthenticatedRequest, res: Response) {
-    try {
-      const { user } = req;
-      const {
-        startDate: startDate_,
-        endDate: endDate_,
-        assignee,
-      } = req.query as {
-        startDate?: string;
-        endDate?: string;
-        assignee?: any;
-      };
-
-      console.log("query", req.query, "user", user);
+ static async getAttendance(req: AuthenticatedRequest, res: Response) {
+  try {
+    const { user } = req;
+    const {
+      startDate: startDate_,
+      endDate: endDate_,
+      userId,
+    }: {
+      startDate?: string;
+      endDate?: string;
+      userId?: string;
+    } = req.query;
 
       if (!user?.sub) {
         return res.status(401).json({ message: "Authentication required" });
       }
 
-      const localTimeZone = DateTime.local().zoneName;
+    const localTimeZone = DateTime.local().zoneName;
 
       const startDate = startDate_
         ? DateTime.fromISO(startDate_)
@@ -162,106 +160,114 @@ export default class AttendanceController {
             .toJSDate()
         : DateTime.now().setZone(localTimeZone).endOf("day").toJSDate();
 
-      let query: Record<string, any> = {
-        punchIn: { $gte: startDate, $lte: endDate },
-      };
+    let query: Record<string, any> = {
+      punchIn: { $gte: startDate, $lte: endDate },
+    };
 
-      if (user.userRole === "staff") {
-        query.user = user._id;
+    let userIds: mongoose.Types.ObjectId[] = [];
+
+    if (user.role === "staff") {
+      query.user = new mongoose.Types.ObjectId(user.sub);
+    } else if (user.role === "admin") {
+      if (!userId || userId.trim() === "") {
+        // no userId provided → fetch all company users
+        const allUsers = await User.find({ company: user.company }, "_id");
+        userIds = allUsers.map((u) => u._id);
       } else {
-        const assigneeArray = assignee
+        // userId is comma separated list
+        userIds = userId
           .split(",")
-          .map((id: string) => new mongoose.Types.ObjectId(id.trim()));
-
-        query.user = { $in: assigneeArray };
+          .map((id: string) => id.trim())
+          .filter((id: string) => mongoose.isValidObjectId(id))
+          .map((id: string) => new mongoose.Types.ObjectId(id));
       }
 
-      if (user.userRole === "admin" || user.userRole === "teamLeader") {
-        query.user = new mongoose.Types.ObjectId(user.sub);
+      if (userIds.length > 0) {
+        query.user = { $in: userIds };
       }
-
-      const records = await attendanceSchema
-        .find(query)
-        .populate([{ path: "user", model: User }])
-        .sort({ punchIn: -1 })
-        .lean();
-      console.log("records", records);
-      const presentStaffIds = new Set<string>();
-      let totalHours = 0;
-
-      records.forEach((record: any) => {
-        if (record.user?.userRole === "staff") {
-          presentStaffIds.add(record.user._id.toString());
-        }
-        if (record?.punchOut) {
-          totalHours +=
-            (record.punchOut.getTime() - record.punchIn.getTime()) / 3600000;
-        }
-      });
-
-      const presentCount = presentStaffIds.size;
-
-      const leaveQuery: Record<string, any> = {
-        status: "Approved",
-        leaveType: [
-          "Sick Leave",
-          "Casual Leave",
-          "Planned Leave",
-          "Leave Without Pay",
-          "Half Day",
-        ],
-        $or: [
-          { startDate: { $gte: startDate, $lte: endDate } },
-          { endDate: { $gte: startDate, $lte: endDate } },
-          { startDate: { $lte: startDate }, endDate: { $gte: endDate } },
-        ],
-      };
-
-      const WFHQuery: Record<string, any> = {
-        ...leaveQuery,
-        leaveType: ["Work From Home"],
-      };
-
-      if (user.userRole === "staff") {
-        leaveQuery.user = new mongoose.Types.ObjectId(user._id);
-        WFHQuery.user = new mongoose.Types.ObjectId(user._id);
-      }
-      if (user.userRole === "admin" || user.userRole === "teamLeader") {
-        leaveQuery.user = new mongoose.Types.ObjectId(user.sub);
-        WFHQuery.user = new mongoose.Types.ObjectId(user.sub);
-      }
-
-      const leaveData = await leaveSchema
-        .find(leaveQuery)
-        .populate("user")
-        .lean();
-      const wfhData = await leaveSchema.find(WFHQuery).populate("user").lean();
-
-      const leaveCount = leaveData.length;
-      const wfhCount = wfhData.length;
-
-      const totalDays =
-        Math.floor((endDate.getTime() - startDate.getTime()) / 86400000) + 1;
-      const absentCount = Math.max(totalDays - presentCount - leaveCount, 0);
-
-      return res.status(200).json({
-        data: {
-          records,
-          leaveData,
-          wfhData,
-          summary: {
-            totalHours: Number(totalHours.toFixed(2)),
-            requiredHours: 8,
-            incompleteHours: Math.max(8 - totalHours, 0),
-          },
-          attendanceStats: { presentCount, absentCount, leaveCount, wfhCount },
-        },
-      });
-    } catch (error: any) {
-      console.error(error);
-      return res
-        .status(500)
-        .json({ message: "Internal server error", error: error.message });
     }
+
+    const records = await attendanceSchema
+      .find(query)
+      .populate([{ path: "user", model: User }])
+      .sort({ punchIn: -1 })
+      .lean();
+
+    // --- Attendance Stats ---
+    const presentStaffIds = new Set<string>();
+    let totalHours = 0;
+
+    records.forEach((record: any) => {
+      if (record.user?.role === "staff") {
+        presentStaffIds.add(record.user._id.toString());
+      }
+      if (record?.punchOut) {
+        totalHours +=
+          (record.punchOut.getTime() - record.punchIn.getTime()) / 3600000;
+      }
+    });
+
+    const presentCount = presentStaffIds.size;
+
+    // --- Leave Query ---
+    const leaveQuery: Record<string, any> = {
+      status: "Approved",
+      leaveType: [
+        "Sick Leave",
+        "Casual Leave",
+        "Planned Leave",
+        "Leave Without Pay",
+        "Half Day",
+      ],
+      $or: [
+        { startDate: { $gte: startDate, $lte: endDate } },
+        { endDate: { $gte: startDate, $lte: endDate } },
+        { startDate: { $lte: startDate }, endDate: { $gte: endDate } },
+      ],
+    };
+
+    const WFHQuery: Record<string, any> = {
+      ...leaveQuery,
+      leaveType: ["Work From Home"],
+    };
+
+    if (user.role === "staff") {
+      leaveQuery.user = new mongoose.Types.ObjectId(user._id);
+      WFHQuery.user = new mongoose.Types.ObjectId(user._id);
+    } else if (user.role === "admin" && userIds.length > 0) {
+      leaveQuery.user = { $in: userIds };
+      WFHQuery.user = { $in: userIds };
+    }
+
+    const leaveData = await leaveSchema.find(leaveQuery).populate("user").lean();
+    const wfhData = await leaveSchema.find(WFHQuery).populate("user").lean();
+
+    const leaveCount = leaveData.length;
+    const wfhCount = wfhData.length;
+
+    const totalDays =
+      Math.floor((endDate.getTime() - startDate.getTime()) / 86400000) + 1;
+    const absentCount = Math.max(totalDays - presentCount - leaveCount, 0);
+
+    return res.status(200).json({
+      data: {
+        records,
+        leaveData,
+        wfhData,
+        summary: {
+          totalHours: Number(totalHours.toFixed(2)),
+          requiredHours: 8,
+          incompleteHours: Math.max(8 - totalHours, 0),
+        },
+        attendanceStats: { presentCount, absentCount, leaveCount, wfhCount },
+      },
+    });
+  } catch (error: any) {
+    console.error(error);
+    return res
+      .status(500)
+      .json({ message: "Internal server error", error: error.message });
   }
+}
+
 }
