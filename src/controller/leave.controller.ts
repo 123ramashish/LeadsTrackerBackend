@@ -1,4 +1,4 @@
-import * as dotenv from 'dotenv';
+import * as dotenv from "dotenv";
 dotenv.config();
 import { Request, Response } from "express";
 import { DateTime } from "luxon";
@@ -20,7 +20,7 @@ interface AuthRequest extends Request {
     sub: string;
     email: string;
     role: string;
-    company:string;
+    company: string;
   };
 }
 
@@ -32,10 +32,12 @@ function toZonedDate(d: string | Date) {
 export default class LeaveController {
   static async createLeave(req: AuthRequest, res: Response) {
     try {
-      const {user} = req;
+      const { user } = req;
 
       if (!user || !user.sub) {
-        return res.status(401).json({ message: "User authentication required" });
+        return res
+          .status(401)
+          .json({ message: "User authentication required" });
       }
 
       const body = req.body as {
@@ -44,19 +46,23 @@ export default class LeaveController {
         endDate?: string;
         reason?: string;
       };
-console.log("body",req.body)
+      console.log("body", req.body);
       if (!body.leaveType || !body.startDate || !body.endDate) {
-        return res.status(400).json({ message: "Leave Type, start date, and end date are required" });
+        return res
+          .status(400)
+          .json({
+            message: "Leave Type, start date, and end date are required",
+          });
       }
 
       const leave = new leaveSchema({
         reason: body.reason,
         leaveType: body.leaveType,
-        status:"Pending",
+        status: "Pending",
         startDate: toZonedDate(body.startDate),
         endDate: toZonedDate(body.endDate),
         user: user.sub,
-        company:user?.company
+        company: user?.company,
       });
 
       await leave.save();
@@ -66,15 +72,19 @@ console.log("body",req.body)
         data: leave,
       });
     } catch (error: any) {
-      return res.status(500).json({ message: error?.message || "Failed to create leave" });
+      return res
+        .status(500)
+        .json({ message: error?.message || "Failed to create leave" });
     }
   }
 
   static async updateLeave(req: AuthRequest, res: Response) {
     try {
-      const {user} = req;
+      const { user } = req;
       if (!user || !user.sub) {
-        return res.status(401).json({ message: "User authentication required" });
+        return res
+          .status(401)
+          .json({ message: "User authentication required" });
       }
 
       const id = (req.query.id as string) || (req.body?.id as string);
@@ -100,7 +110,7 @@ console.log("body",req.body)
         },
         { new: true }
       );
-console.log("updatedLeave",updatedLeave)
+      console.log("updatedLeave", updatedLeave);
       if (!updatedLeave) {
         return res.status(404).json({ message: "Leave not found" });
       }
@@ -110,15 +120,19 @@ console.log("updatedLeave",updatedLeave)
         data: updatedLeave,
       });
     } catch (error: any) {
-      return res.status(500).json({ message: error?.message || "Failed to update leave" });
+      return res
+        .status(500)
+        .json({ message: error?.message || "Failed to update leave" });
     }
   }
 
   static async getLeaves(req: AuthRequest, res: Response) {
     try {
-      const {user} = req;
+      const { user } = req;
       if (!user || !user.sub) {
-        return res.status(401).json({ message: "User authentication required" });
+        return res
+          .status(401)
+          .json({ message: "User authentication required" });
       }
 
       const statusFilter = (req.query.status as string) ?? undefined;
@@ -151,7 +165,9 @@ console.log("updatedLeave",updatedLeave)
         data: leaves,
       });
     } catch (error: any) {
-      return res.status(500).json({ message: error?.message || "Failed to fetch leaves" });
+      return res
+        .status(500)
+        .json({ message: error?.message || "Failed to fetch leaves" });
     }
   }
 
@@ -196,9 +212,11 @@ console.log("updatedLeave",updatedLeave)
 
   static async commentLeave(req: AuthRequest, res: Response) {
     try {
-      const {user} = req;
+      const { user } = req;
       if (!user || !user.sub) {
-        return res.status(401).json({ message: "User authentication required" });
+        return res
+          .status(401)
+          .json({ message: "User authentication required" });
       }
 
       const id = (req.body?.id as string) ?? undefined;
@@ -208,7 +226,9 @@ console.log("updatedLeave",updatedLeave)
         return res.status(400).json({ message: "Id is missing in Params" });
       }
       if (!newComment) {
-        return res.status(400).json({ message: "Payload is missing or invalid" });
+        return res
+          .status(400)
+          .json({ message: "Payload is missing or invalid" });
       }
 
       let uploadUrl: string | undefined;

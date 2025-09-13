@@ -13,9 +13,11 @@ import suggestionRouter from "./suggestions.router";
 import feedbackRouter from "./feedback.router";
 import leadRouter from "./lead.router";
 import notificationRouter from "./notification.router";
+import holidayRouter from "./holiday.router";
 
 const router = Router();
 
+router.use("/holidays", holidayRouter);
 router.use("/dashboard", dashboardRouter);
 router.use("/attendance", attendanceRouter);
 router.use("/suggestions", suggestionRouter);

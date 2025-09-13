@@ -8,17 +8,14 @@ export default class AuthController {
   async loginWithEmail(req: Request, res: Response) {
     try {
       const { email, password } = req.body;
-      console.log(email, password);
       const user: any = await User.findOne({ email });
       if (!user) return res.status(401).json({ message: "User not found" });
-      console.log("User found:", user.email, email, password);
       const isMatch = await bcrypt.compare(password, user.password);
       if (!isMatch) return res.status(401).json({ message: "Wrong Password!" });
 
       await this.updateLastLogin(user._id);
 
       const tokens = await this.generateTokens(user);
-
       return res.status(200).json(tokens);
     } catch (error: any) {
       console.error("Error:", error.message);
@@ -29,7 +26,6 @@ export default class AuthController {
   async loginWithPhone(req: Request, res: Response) {
     try {
       const { phone, otp } = req.body;
-      console.log("phone", phone);
       const user: any = await User.findOne({ phone });
       if (!user) return res.status(401).json({ message: "User not found" });
 
