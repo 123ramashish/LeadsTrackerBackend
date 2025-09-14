@@ -23,7 +23,8 @@ const holidaySchema = new mongoose.Schema(
     },
     company: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Registration", // optional: if holiday tied to company
+      ref: "Registration",
+      require:[true,"Company is missing, Please login!"]
     },
     description: {
       type: String,

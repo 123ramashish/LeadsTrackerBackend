@@ -1,34 +1,33 @@
 import cron from "node-cron";
 import AutoController from "../controller/auto.controller";
 
-const autoController = new AutoController();
 
-// Run createTaskFromRepeatTask every hour at :00
-cron.schedule("0 * * * *", async () => {
+// Run createTaskFromRepeatTask every day at 9:00 AM
+cron.schedule("0 9 * * *", async () => {
   console.log("[AUTO CRON] Running createTaskFromRepeatTask...");
-//   try {
-//     await autoController.createTaskFromRepeatTask();
-//   } catch (err) {
-//     console.error("Error in createTaskFromRepeatTask:", err);
-//   }
+  try {
+    await AutoController.runAutoRepeatTaskCreation();
+  } catch (err) {
+    console.error("Error in createTaskFromRepeatTask:", err);
+  }
 });
 
-// Run changeExpiredTaskStatus every hour at :01 (1 min later)
-cron.schedule("1 * * * *", async () => {
+// Run changeExpiredTaskStatus every day at 9:01 AM
+cron.schedule("1 9 * * *", async () => {
   console.log("[AUTO CRON] Running changeExpiredTaskStatus...");
-//   try {
-//     await autoController.changeExpiredTaskStatus();
-//   } catch (err) {
-//     console.error("Error in changeExpiredTaskStatus:", err);
-//   }
+  try {
+    await AutoController.runAutoStatusUpdate();
+  } catch (err) {
+    console.error("Error in changeExpiredTaskStatus:", err);
+  }
 });
 
-// Run sendNotification every hour at :02 (2 min later)
-cron.schedule("2 * * * *", async () => {
-  console.log("[AUTO CRON] Running sendNotification...");
+// Run sendNotification every day at 9:02 AM
+// cron.schedule("2 9 * * *", async () => {
+//   console.log("[AUTO CRON] Running sendNotification...");
 //   try {
-//     await autoController.sendNotification();
+//     await AutoController.sendNotification();
 //   } catch (err) {
 //     console.error("Error in sendNotification:", err);
 //   }
-});
+// });

@@ -1,31 +1,48 @@
 import { Request, Response, NextFunction } from "express";
 import holidaySchema from "../DataBase/Schema/holiday.schema";
+import { DateTime } from "luxon";
+
+interface AuthRequest extends Request {
+  user?: {
+    sub: string;
+    email: string;
+    role: string;
+    company: string;
+    timezone?: string; // optional, can default to server TZ
+  };
+}
 
 export class HolidayController {
   // Create holiday
-  static async createHoliday(req: Request, res: Response, next: NextFunction) {
+  static async createHoliday(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-      const { name, date, type, isRecurring, company, description } = req.body;
-      console.log("body", req.body);
-      // Validate required fields
+      const user = req.user;
+      const { name, date, type, isRecurring, description } = req.body;
+
+      if (!user?.company) {
+        return res.status(400).json({ message: "User company missing" });
+      }
+
       if (!name || !date) {
-        return res.status(400).json({
-          message: "Name and date are required fields",
-        });
+        return res.status(400).json({ message: "Name and date are required" });
+      }
+
+      const timezone = user.timezone || DateTime.local().zoneName;
+
+      // Normalize date: convert provided date to UTC while preserving local meaning
+      const localDate = DateTime.fromISO(date, { zone: timezone });
+      if (!localDate.isValid) {
+        return res.status(400).json({ message: "Invalid date format" });
       }
 
       const holidayData: any = {
         name,
-        date,
         type: type || "public",
         isRecurring: isRecurring || false,
         description: description || "",
+        company: user.company,
+        date: localDate.toUTC().toISO(),
       };
-
-      // Only add company if it's provided and not empty
-      if (company && company.trim()) {
-        holidayData.company = company;
-      }
 
       const holiday = new holidaySchema(holidayData);
       const savedHoliday = await holiday.save();
@@ -38,23 +55,30 @@ export class HolidayController {
   }
 
   // Update holiday
-  static async updateHoliday(req: Request, res: Response, next: NextFunction) {
+  static async updateHoliday(req: AuthRequest, res: Response, next: NextFunction) {
     try {
+      const user = req.user;
       const { id } = req.params;
-      const updateData = { ...req.body };
 
-      // Remove empty company field to avoid validation issues
-      if (updateData.company === "") {
-        delete updateData.company;
+      if (!user?.company) {
+        return res.status(400).json({ message: "User company missing" });
       }
 
-      const updatedHoliday = await holidaySchema.findByIdAndUpdate(
-        id,
-        updateData,
-        {
-          new: true,
-          runValidators: true,
+      const updateData = { ...req.body };
+
+      if (updateData.date) {
+        const timezone = user.timezone || DateTime.local().zoneName;
+        const localDate = DateTime.fromISO(updateData.date, { zone: timezone });
+        if (!localDate.isValid) {
+          return res.status(400).json({ message: "Invalid date format" });
         }
+        updateData.date = localDate.toUTC().toISO();
+      }
+
+      const updatedHoliday = await holidaySchema.findOneAndUpdate(
+        { _id: id, company: user.company },
+        updateData,
+        { new: true, runValidators: true }
       );
 
       if (!updatedHoliday) {
@@ -69,11 +93,15 @@ export class HolidayController {
   }
 
   // Get all holidays
-  static async getAllHolidays(req: Request, res: Response, next: NextFunction) {
+  static async getAllHolidays(req: AuthRequest, res: Response, next: NextFunction) {
     try {
+      const user = req.user;
+      if (!user?.company) {
+        return res.status(400).json({ message: "User company missing" });
+      }
+
       const holidays = await holidaySchema
-        .find()
-        .populate("company", "name")
+        .find({ company: user.company })
         .sort({ date: 1 });
 
       res.status(200).json(holidays);
@@ -84,12 +112,16 @@ export class HolidayController {
   }
 
   // Get holiday by ID
-  static async getHolidayById(req: Request, res: Response, next: NextFunction) {
+  static async getHolidayById(req: AuthRequest, res: Response, next: NextFunction) {
     try {
+      const user = req.user;
       const { id } = req.params;
-      const holiday = await holidaySchema
-        .findById(id)
-        .populate("company", "name");
+
+      if (!user?.company) {
+        return res.status(400).json({ message: "User company missing" });
+      }
+
+      const holiday = await holidaySchema.findOne({ _id: id, company: user.company });
 
       if (!holiday) {
         return res.status(404).json({ message: "Holiday not found" });
@@ -103,10 +135,19 @@ export class HolidayController {
   }
 
   // Delete holiday
-  static async deleteHoliday(req: Request, res: Response, next: NextFunction) {
+  static async deleteHoliday(req: AuthRequest, res: Response, next: NextFunction) {
     try {
+      const user = req.user;
       const { id } = req.params;
-      const deletedHoliday = await holidaySchema.findByIdAndDelete(id);
+
+      if (!user?.company) {
+        return res.status(400).json({ message: "User company missing" });
+      }
+
+      const deletedHoliday = await holidaySchema.findOneAndDelete({
+        _id: id,
+        company: user.company,
+      });
 
       if (!deletedHoliday) {
         return res.status(404).json({ message: "Holiday not found" });

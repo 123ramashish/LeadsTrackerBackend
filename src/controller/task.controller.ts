@@ -88,24 +88,18 @@ export default class TaskController {
 
       // ✅ Bucket logic
       let individualBucket: any[] = [];
+      let companyBucket = false;
+
       if (startDate > new Date() && !body.bucket) {
         body.bucket = "individual";
-      }
-      const now = new Date();
-      const startOfToday = new Date(now.setHours(0, 0, 0, 0));
-      const endOfToday = new Date(now.setHours(23, 59, 59, 999));
-
-      if (startDate >= startOfToday && startDate <= endOfToday && body.bucket) {
-        return res.status(400).json({
-          message:
-            "Cannot assign to bucket for today tasks. Please don't save for future",
-        });
       }
       if (body.bucket === "individual") {
         individualBucket = body.assignee.map((userId: string) => ({
           user: userId,
           individual: true,
         }));
+      } else if (body.bucket === "company") {
+        companyBucket = true;
       } else {
         individualBucket = body.assignee.map((userId: string) => ({
           user: userId,
@@ -141,6 +135,7 @@ export default class TaskController {
         status,
         company: new mongoose.Types.ObjectId(body.company),
         individualBucket,
+        companyBucket,
         divideTime: body.divide,
       });
 
@@ -700,7 +695,7 @@ export default class TaskController {
   async getTaskBucket(req: AuthRequest, res: Response) {
     try {
       const { bucketType, company } = req.query as {
-        bucketType?: "individual" | "";
+        bucketType?: "individual" | "company";
         company?: string;
       };
 
@@ -715,7 +710,16 @@ export default class TaskController {
       // filter by bucket type
       if (bucketType === "individual") {
         filter["individualBucket.individual"] = true;
+      } else if (bucketType === "company") {
+        filter.companyBucket = true;
+      } else {
+        // if empty → match either individual OR company bucket
+        filter.$or = [
+          { "individualBucket.individual": true },
+          { companyBucket: true },
+        ];
       }
+
 
       const tasks = await Task.find(filter)
         .populate("assignee", "_id name role")
@@ -867,6 +871,9 @@ export default class TaskController {
       }
       // Update companyBucket
       if (toBucket === "company") {
+        if(task.companyBucket){
+          return res.status(200).json({message:"Task already exit in company bucket!"})
+        }
         task.companyBucket = true;
       } else if (toBucket === "none") {
         task.companyBucket = false;
@@ -971,6 +978,7 @@ export default class TaskController {
   async updateTags(req: Request, res: Response) {
     try {
       const { id, company, tags } = req.body;
+      console.log("tags",id,company,tags)
       if (!id || !company || !Array.isArray(tags)) {
         return res
           .status(400)
