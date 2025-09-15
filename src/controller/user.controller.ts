@@ -19,6 +19,16 @@ export default class UserController {
       // ✅ Check for existing user by phone
       const existingUser = await User.findOne({ phone });
       if (existingUser) {
+        if (existingUser?.isDelete) {
+          existingUser.isDelete = false;
+          await existingUser.save();
+          return res
+            .status(200)
+            .json({
+              message: "User already exists, data updated successfully!",
+            });
+        }
+
         return res.status(409).json({
           message: "User with this phone already exists",
         });
