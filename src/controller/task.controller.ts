@@ -386,7 +386,7 @@ export default class TaskController {
         priority?: string;
       };
 
-      if (!user.sub) {
+      if (!user?.sub) {
         return res.status(400).json({ message: "User ID is required" });
       }
 
