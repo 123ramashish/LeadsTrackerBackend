@@ -391,7 +391,9 @@ export default class TaskController {
       }
 
       // Step 1: Build base query
-      const query: any = { assignee: user.sub };
+      const query: any = {
+        assignee: { $in: [user.sub] },
+      };
 
       if (priority) query.priority = priority;
       if (taskDate) query.taskDate = new Date(taskDate);
@@ -720,7 +722,6 @@ export default class TaskController {
         ];
       }
 
-
       const tasks = await Task.find(filter)
         .populate("assignee", "_id name role")
         .populate("userEstimatedTime.user", "_id name role")
@@ -871,8 +872,10 @@ export default class TaskController {
       }
       // Update companyBucket
       if (toBucket === "company") {
-        if(task.companyBucket){
-          return res.status(200).json({message:"Task already exit in company bucket!"})
+        if (task.companyBucket) {
+          return res
+            .status(200)
+            .json({ message: "Task already exit in company bucket!" });
         }
         task.companyBucket = true;
       } else if (toBucket === "none") {
@@ -978,7 +981,7 @@ export default class TaskController {
   async updateTags(req: Request, res: Response) {
     try {
       const { id, company, tags } = req.body;
-      console.log("tags",id,company,tags)
+      console.log("tags", id, company, tags);
       if (!id || !company || !Array.isArray(tags)) {
         return res
           .status(400)
