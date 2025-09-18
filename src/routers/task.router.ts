@@ -13,9 +13,8 @@ taskRouter.get("/totalTaskAmountTime", authenticate,taskController.getTaskAmount
 taskRouter.get("/message", authenticate,taskController.getTaskMessages); 
 taskRouter.get("/individualBucket", authenticate,taskController.individualBucket); 
 taskRouter.put("/status", authenticate, taskController.updateTaskStatus);
-taskRouter.put("/status", authenticate, taskController.updateTaskStatus);
 taskRouter.post("/message", authenticate,taskController.addTaskMessage); 
-taskRouter.get("/:userId",authenticate, taskController.getTaskById.bind(taskController));
+taskRouter.get("/taskById",authenticate, taskController.getTaskById.bind(taskController));
 taskRouter.put("/timeline", authenticate, taskController.updateTaskTimeline);
 taskRouter.put("/details", authenticate, taskController.updateTaskDetails);
 taskRouter.put("/individualBucket", authenticate, taskController.individualBucket);
@@ -23,6 +22,7 @@ taskRouter.put("/companyBucket", authenticate, taskController.companyBucket);
 taskRouter.put("/bucketShift", authenticate, taskController.bucketShift);
 taskRouter.put("/estimatedTime", authenticate, taskController.estimatedTimeUpdate);
 taskRouter.put("/tags", authenticate, taskController.updateTags);
+taskRouter.put("/pickTask", authenticate, taskController.pickTask);
 
 // taskRouter.delete("/:id",  taskController.deleteTask);
 

@@ -5,61 +5,105 @@ import mongoose from "mongoose";
 import leaveSchema from "../DataBase/Schema/leave.schema";
 import User from "../DataBase/Schema/user.schema";
 import { Notification_Create } from "../utils/notificationUtils";
+import Notification from "../DataBase/Schema/notification.schema";
+import { sendPushNotification } from "../helper/notifications";
 
 export default class AutoStatusUpdater {
-  /**
-   * Expire tasks by comparing today with endDate/dueDate
-   */
   static async runAutoStatusUpdate() {
     try {
       console.log("[AUTO STATUS UPDATE] Starting status update...");
-      const today = DateTime.local().startOf("day");
 
+      const localTimeZone = DateTime.local().zoneName;
+      const today = DateTime.now().setZone(localTimeZone).startOf("day");
+      console.log("today", today.toISODate());
+
+      // 1. Check holiday
+      const isHoliday = await this.checkIfHoliday(today.toJSDate());
+      if (isHoliday) {
+        console.log("[AUTO STATUS UPDATE] Skipped - Today is a holiday");
+        return {
+          success: true,
+          updatedTasksCount: 0,
+          message: "Skipped due to holiday",
+        };
+      }
+
+      // 2. Get all users
+      const users = await User.find({}, "_id").lean();
+      const userIds = users.map((u: any) => u._id.toString());
+
+      // 3. Filter users not on leave
+      const usersOnLeave = await this.getUsersOnLeave(
+        userIds,
+        today.toJSDate()
+      );
+      const activeUserIds = userIds.filter((id) => !usersOnLeave.includes(id));
+
+      if (activeUserIds.length === 0) {
+        console.log("[AUTO STATUS UPDATE] No active users today");
+        return {
+          success: true,
+          updatedTasksCount: 0,
+          message: "No active users",
+        };
+      }
+
+      // 4. Find tasks assigned to active users with expired dates
       const tasks = await Task.find({
+        assignee: { $in: activeUserIds },
         $or: [
-          { endDate: { $exists: true, $ne: [] } },
-          { dueDate: { $exists: true, $ne: [] } },
+          { endDate: { $elemMatch: { date: { $lt: today.toJSDate() } } } },
+          { dueDate: { $elemMatch: { date: { $lt: today.toJSDate() } } } },
         ],
-      });
+      }).lean();
+
+      console.log("tasks found", tasks.length);
 
       let updatedTasksCount = 0;
+      const expiredTaskUser: string[] = [];
 
       for (const task of tasks) {
+        let hasChanged = false;
+
         const updatedStatuses = task.status.map((statusObj: any) => {
-          const userEndDateObj = task.endDate?.find(
-            (end: any) => end.user.toString() === statusObj.user.toString()
-          );
+          const userId = statusObj?.user?.toString();
+          if (!userId) return statusObj;
 
-          const userDueDateObj = task.dueDate?.find(
-            (due: any) => due.user.toString() === statusObj.user.toString()
-          );
-
-          const endDate = userEndDateObj?.date
-            ? DateTime.fromJSDate(userEndDateObj.date).setZone("local")
-            : null;
-
-          const dueDates = Array.isArray(userDueDateObj?.date)
-            ? userDueDateObj.date.map((d: any) =>
-                DateTime.fromJSDate(d).setZone("local")
-              )
-            : [];
-
-          const isExpiredByEndDate = endDate && endDate < today;
-          const isExpiredByDueDate =
-            dueDates.length > 0 && dueDates.some((d) => d < today);
+          const dueExpired =
+            task.dueDate?.some(
+              (d: any) => new Date(d.date) < today.toJSDate()
+            ) ?? false;
+          const endExpired =
+            task.endDate?.some(
+              (d: any) => new Date(d.date) < today.toJSDate()
+            ) ?? false;
 
           if (
-            (isExpiredByEndDate || isExpiredByDueDate) &&
+            activeUserIds.includes(userId) &&
+            (dueExpired || endExpired) &&
             statusObj.status !== "expired"
           ) {
+            hasChanged = true;
+            expiredTaskUser.push(userId);
+
+            // 🔔 Create notification in DB
+            Notification.create({
+              createFor: userId,
+              title: "Task Expired",
+              description: `Task "${task.taskTitle}" has expired.`,
+            });
+
+            // 📲 Send push notification
+            sendPushNotification(
+              userId,
+              "Task Expired",
+              `Task "${task.taskTitle}" has expired.`
+            );
+
             return { ...statusObj, status: "expired" };
           }
-
           return statusObj;
         });
-
-        const hasChanged =
-          JSON.stringify(task.status) !== JSON.stringify(updatedStatuses);
 
         if (hasChanged) {
           await Task.updateOne(
@@ -70,6 +114,7 @@ export default class AutoStatusUpdater {
         }
       }
 
+      console.log("expiredTaskUser", expiredTaskUser);
       console.log(
         `[AUTO STATUS UPDATE] Updated status for ${updatedTasksCount} tasks.`
       );
@@ -77,6 +122,7 @@ export default class AutoStatusUpdater {
       return {
         success: true,
         updatedTasksCount,
+        expiredTaskUser,
         message: `Status updated for ${updatedTasksCount} tasks`,
       };
     } catch (error) {
@@ -91,9 +137,46 @@ export default class AutoStatusUpdater {
   static async runAutoRepeatTaskCreation() {
     try {
       console.log("[AUTO REPEAT TASK] Starting repeat task creation...");
-      const today = DateTime.local().startOf("day");
-      const repeatTasks = await RepeatTask.find({});
+      const localTimeZone = DateTime.local().zoneName;
+      const today = DateTime.now().setZone(localTimeZone);
+      console.log("today",today);
 
+      // 1. Check holiday
+      const isHoliday = await this.checkIfHoliday(today.toJSDate());
+      if (isHoliday) {
+        console.log("[AUTO STATUS UPDATE] Skipped - Today is a holiday");
+        return {
+          success: true,
+          updatedTasksCount: 0,
+          message: "Skipped due to holiday",
+        };
+      }
+
+      // 2. Get all users
+      const users = await User.find({}, "_id").lean();
+      const userIds = users.map((u: any) => u._id.toString());
+
+      // 3. Filter users not on leave
+      const usersOnLeave = await this.getUsersOnLeave(
+        userIds,
+        today.toJSDate()
+      );
+      const activeUserIds = userIds.filter((id) => !usersOnLeave.includes(id));
+
+      if (activeUserIds.length === 0) {
+        console.log("[AUTO STATUS UPDATE] No active users today");
+        return {
+          success: true,
+          updatedTasksCount: 0,
+          message: "No active users",
+        };
+      }
+console.log("activeUserId",activeUserIds)
+      // 4. Find tasks assigned to active users with expired dates
+      const repeatTasks = await RepeatTask.find({
+        assignee: { $in: activeUserIds },
+      }).lean();
+console.log("repeatTask",repeatTasks)
       let createdCount = 0;
       let skippedCount = 0;
 
@@ -101,9 +184,9 @@ export default class AutoStatusUpdater {
         try {
           if (!repeatTask.startDate || !repeatTask.endDate) continue;
 
-          const startDate = DateTime.fromJSDate(
-            repeatTask.startDate
-          ).startOf("day");
+          const startDate = DateTime.fromJSDate(repeatTask.startDate).startOf(
+            "day"
+          );
           const endDate = DateTime.fromJSDate(repeatTask.endDate).endOf("day");
 
           if (today < startDate || today > endDate) continue;
@@ -111,10 +194,7 @@ export default class AutoStatusUpdater {
           const shouldCreate = this.shouldCreateRepeatTask(repeatTask, today);
           if (!shouldCreate) continue;
 
-          const exists = await this.taskExistsForToday(
-            repeatTask._id,
-            today
-          );
+          const exists = await this.taskExistsForToday(repeatTask._id, today);
           if (exists) continue;
 
           const result = await this.createTaskFromRepeat(
@@ -156,21 +236,12 @@ export default class AutoStatusUpdater {
         "assignee"
       );
       if (!repeatTask) throw new Error("Repeat task not found");
+      const localTimeZone = DateTime.local().zoneName;
+      const taskDate =DateTime.now().setZone(localTimeZone);
+      const startDate = taskDate.startOf("day").toJSDate();
+      const endDate = taskDate.endOf("day").toJSDate();
 
-      const taskDate = targetDate || new Date();
-      const localTimeZone = await this.getLocalTimeZone();
-
-      const taskDateTime = DateTime.fromJSDate(taskDate).setZone(localTimeZone);
-      const taskDateOnly = taskDateTime.startOf("day").toJSDate();
-
-      // ✅ Skip task creation if holiday
-      const isHoliday = await this.checkIfHoliday(
-        taskDateOnly,
-        repeatTask.company
-      );
-      if (isHoliday)
-        return { success: false, message: "Skipped due to holiday" };
-
+     
       // Collect assignees
       let assignees: string[] =
         repeatTask.assignee?.map(
@@ -181,57 +252,42 @@ export default class AutoStatusUpdater {
         const users = await User.find({ company: repeatTask.company });
         assignees = users.map((u) => u._id.toString());
       }
-
-      // ✅ Skip task creation if ANY user is on leave
-      const usersOnLeave = await this.getUsersOnLeave(
-        assignees,
-        taskDateOnly
-      );
-      if (usersOnLeave.length > 0)
-        return { success: false, message: "Skipped - user(s) on leave" };
-
-      // Estimate time
+      // Calculate estimated time
       const totalValue = Number(repeatTask.estimatedTime.value);
       const unit = repeatTask.estimatedTime.unit;
-
       const perUserValue = repeatTask.divideTime
         ? parseFloat((totalValue / assignees.length).toFixed(2))
         : totalValue;
-
       const userEstimatedTime = assignees.map((userId) => ({
         user: userId,
         estimatedTime: { unit, value: perUserValue },
       }));
 
-      const dueDateTime = taskDateTime.endOf("day");
-      const dueDate = new Date(dueDateTime.toISO()!);
-
+      // User-specific start/end dates
       const userStartDate = assignees.map((userId) => ({
         user: userId,
-        date: taskDateOnly,
+        date: startDate,
       }));
       const userEndDate = assignees.map((userId) => ({
         user: userId,
-        date: dueDate,
+        date: endDate,
       }));
-      const userDueDate = assignees.map((userId) => ({
+      const dueDate = assignees.map((userId) => ({
         user: userId,
-        date: [dueDate],
-      }));
+        date: [endDate],
+      }));      
 
-      const individualBucket = assignees.map((userId) => ({
-        user: userId,
-        individual: false,
-      }));
+      // ✅ Status per assignee
       const status = assignees.map((userId) => ({
         user: userId,
         status: "assignee",
       }));
 
+      // Create task
       const task = new Task({
         taskTitle: repeatTask.taskTitle,
         taskDescription: repeatTask.taskDescription || "",
-        taskDate: taskDateOnly,
+        taskDate: startDate,
         estimatedTime: { unit, value: totalValue },
         noOfEntry: repeatTask.noOfEntry,
         entryTime: repeatTask.entryTime,
@@ -242,25 +298,34 @@ export default class AutoStatusUpdater {
         address: repeatTask.address || null,
         startDate: userStartDate,
         endDate: userEndDate,
-        dueDate: userDueDate,
+        dueDate,
         createdBy: repeatTask.createdBy,
         tags: repeatTask.tags || [],
         notes: repeatTask.notes || "",
         status,
         company: new mongoose.Types.ObjectId(repeatTask.company),
-        individualBucket,
-        companyBucket: false,
+        individualBucket:assignees.map((userId) => ({
+          user: userId,
+          individual: false,
+        })),
+        companyBucket:false,
         repeatTaskId: repeatTask._id,
         divideTime: repeatTask.divideTime || false,
       });
 
       await task.save();
 
-      await Notification_Create(
-        assignees,
-        repeatTask.taskTitle,
-        `You have been assigned a task '${repeatTask.taskTitle}'`
-      );
+      // 🔔 Notifications
+      const message = `You have been assigned a task '${repeatTask.taskTitle}'`;
+      if (assignees.length > 0) {
+        Notification.create({
+          createFor: assignees,
+          title: repeatTask.taskTitle,
+          description: message,
+        });
+        sendPushNotification(assignees, repeatTask.taskTitle, message);
+        await Notification_Create(assignees, repeatTask.taskTitle, message);
+      }
 
       return { success: true, task };
     } catch (error) {
@@ -273,10 +338,7 @@ export default class AutoStatusUpdater {
     return Intl.DateTimeFormat().resolvedOptions().timeZone;
   }
 
-  private static async checkIfHoliday(
-    date: Date,
-    companyId: mongoose.Types.ObjectId
-  ): Promise<boolean> {
+  private static async checkIfHoliday(date: Date): Promise<boolean> {
     try {
       const Holiday = mongoose.model("Holiday");
       const startOfDay = DateTime.fromJSDate(date).startOf("day").toJSDate();
@@ -284,7 +346,6 @@ export default class AutoStatusUpdater {
 
       const holiday = await Holiday.findOne({
         date: { $gte: startOfDay, $lte: endOfDay },
-        $or: [{ company: companyId }, { company: { $exists: false } }],
       });
 
       return !!holiday;
@@ -296,13 +357,11 @@ export default class AutoStatusUpdater {
 
   private static async getUsersOnLeave(
     userIds: string[],
-    taskDate: Date
+    date: Date
   ): Promise<string[]> {
     try {
-      const startOfDay = DateTime.fromJSDate(taskDate)
-        .startOf("day")
-        .toJSDate();
-      const endOfDay = DateTime.fromJSDate(taskDate).endOf("day").toJSDate();
+      const startOfDay = DateTime.fromJSDate(date).startOf("day").toJSDate();
+      const endOfDay = DateTime.fromJSDate(date).endOf("day").toJSDate();
 
       const overlappingLeaves = await leaveSchema.find({
         user: { $in: userIds.map((id) => new mongoose.Types.ObjectId(id)) },
@@ -326,37 +385,63 @@ export default class AutoStatusUpdater {
       case "daily":
         return true;
       case "weekly":
-        return repeatTask.repeatDay && today.weekday === repeatTask.repeatDay;
-      case "monthly":
-        if (
-          repeatTask.repeatMonthNumber &&
-          today.day === repeatTask.repeatMonthNumber
-        )
-          return true;
-        if (repeatTask.repeatDate) {
-          const repeatDate = DateTime.fromJSDate(repeatTask.repeatDate);
-          return (
-            today.month === repeatDate.month && today.day === repeatDate.day
-          );
+        if (!repeatTask.repeatDay) return false;
+
+        if (Array.isArray(repeatTask.repeatDay)) {
+          return repeatTask.repeatDay.includes(today.weekday);
+        } else {
+          return today.weekday === repeatTask.repeatDay;
         }
-        return false;
+
+      case "monthly":
+        if (!repeatTask.repeatMonthNumber) return false;
+
+        // handle array or single number
+        if (Array.isArray(repeatTask.repeatMonthNumber)) {
+          return repeatTask.repeatMonthNumber.includes(today.day);
+        } else {
+          return today.day === repeatTask.repeatMonthNumber;
+        }
+
       case "quarterly":
-        if (repeatTask.repeatDate) {
+        if (!repeatTask.repeatDate) return false;
+
+        const quarterMonths = [1, 4, 7, 10];
+
+        if (Array.isArray(repeatTask.repeatDate)) {
+          // check if any date in array matches today's quarter month and day
+          return repeatTask.repeatDate.some((d: Date) => {
+            const repeatDate = DateTime.fromJSDate(d);
+            return (
+              quarterMonths.includes(today.month) &&
+              today.day === repeatDate.day
+            );
+          });
+        } else {
           const repeatDate = DateTime.fromJSDate(repeatTask.repeatDate);
-          const quarterMonths = [1, 4, 7, 10];
           return (
             quarterMonths.includes(today.month) && today.day === repeatDate.day
           );
         }
-        return false;
+
       case "annually":
-        if (repeatTask.repeatDate) {
+        if (!repeatTask.repeatDate) return false;
+
+        if (Array.isArray(repeatTask.repeatDate)) {
+          // check if any date in array matches today's month and day
+          return repeatTask.repeatDate.some((d: Date) => {
+            const repeatDate = DateTime.fromJSDate(d);
+            return (
+              today.month === repeatDate.month && today.day === repeatDate.day
+            );
+          });
+        } else {
           const repeatDate = DateTime.fromJSDate(repeatTask.repeatDate);
           return (
             today.month === repeatDate.month && today.day === repeatDate.day
           );
         }
-        return false;
+
       default:
         return false;
     }
@@ -368,7 +453,7 @@ export default class AutoStatusUpdater {
   ): Promise<boolean> {
     const existingTask = await Task.findOne({
       repeatTaskId,
-      taskDate: {
+      updatedAt: {
         $gte: today.toJSDate(),
         $lt: today.plus({ days: 1 }).toJSDate(),
       },

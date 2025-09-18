@@ -1,19 +1,33 @@
-import { Schema, model, models, Document } from 'mongoose';
+import mongoose, { Schema, Document } from "mongoose";
 
 export interface ISubscription extends Document {
-  subscription: Record<string, unknown>; 
-  createdAt?: Date;
-  updatedAt?: Date;
+  endpoint: string;
+  expirationTime?: Date | null;
+  keys: {
+    p256dh: string;
+    auth: string;
+  };
+  user?: mongoose.Types.ObjectId;
+  company?: mongoose.Types.ObjectId;
+  status: "active" | "inactive";
+  createdAt: Date;
+  updatedAt: Date;
 }
 
-const subscriptionSchema = new Schema<ISubscription>(
+const SubscriptionSchema: Schema = new Schema<ISubscription>(
   {
-    subscription: { type: Schema.Types.Mixed, required: true },
+    endpoint: { type: String, required: true, unique: true },
+    expirationTime: { type: Date, default: null },
+    keys: {
+      p256dh: { type: String, required: true },
+      auth: { type: String, required: true },
+    },
+    user: { type: Schema.Types.ObjectId, ref: "User" },
+    company: { type: Schema.Types.ObjectId, ref: "Registration" },
+    status: { type: String, enum: ["active", "inactive"], default: "active" },
   },
   { timestamps: true }
 );
 
-const Subscription =
-  models.Subscription || model<ISubscription>('Subscription', subscriptionSchema);
-
-export default Subscription;
+export default mongoose.models.Subscription ||
+  mongoose.model<ISubscription>("Subscription", SubscriptionSchema);

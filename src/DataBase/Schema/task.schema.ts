@@ -168,7 +168,6 @@ const TaskSchema = new Schema(
     },
     taskDescription: {
       type: String,
-      required: true,
       trim: true,
     },
     estimatedTime: {

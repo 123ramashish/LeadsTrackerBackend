@@ -22,11 +22,9 @@ export default class UserController {
         if (existingUser?.isDelete) {
           existingUser.isDelete = false;
           await existingUser.save();
-          return res
-            .status(200)
-            .json({
-              message: "User already exists, data updated successfully!",
-            });
+          return res.status(200).json({
+            message: "User already exists, data updated successfully!",
+          });
         }
 
         return res.status(409).json({
@@ -154,19 +152,25 @@ export default class UserController {
   // Update user
   static async updateUser(req: Request, res: Response) {
     try {
+      console.log("api call")
       const { id } = req.params;
       const updateData = req.body;
+      console.log("user", id, updateData);
 
       if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).json({ message: "Invalid user ID" });
       }
 
       // Prevent updating sensitive fields
-      delete updateData.password;
       delete updateData.refreshToken;
       delete updateData.otp;
       delete updateData.otpExpires;
-
+      delete updateData.company;
+      let hashedPassword:any
+      if(updateData?.password){
+       hashedPassword = await bcrypt.hash(updateData?.password, 10);
+       updateData.password = hashedPassword;
+      }
       // If phone is being updated, check for conflicts
       if (updateData.phone) {
         const existingUser = await User.findOne({ phone: updateData.phone });

@@ -4,6 +4,8 @@ import { DateTime } from "luxon";
 import Task from "../DataBase/Schema/task.schema";
 import User from "../DataBase/Schema/user.schema";
 import { Notification_Create } from "../utils/notificationUtils";
+import { sendPushNotification } from "../helper/notifications";
+import Notification from "../DataBase/Schema/notification.schema";
 interface AuthRequest extends Request {
   user?: {
     sub: string;
@@ -90,10 +92,10 @@ export default class TaskController {
       let individualBucket: any[] = [];
       let companyBucket = false;
 
-      if (startDate > new Date() && !body.bucket) {
-        body.bucket = "individual";
-      }
       if (body.bucket === "individual") {
+        if (body.assignee.length == 0) {
+          body.assignee = [user?.sub];
+        }
         individualBucket = body.assignee.map((userId: string) => ({
           user: userId,
           individual: true,
@@ -141,7 +143,20 @@ export default class TaskController {
 
       await task.save();
       const message = `You have been assigned a task '${body.taskTitle}`;
+      let userIds = body.assignee ? body.assignee : [];
+      if (userIds) {
+        const users = await User.find({}, "_id").lean();
+        userIds = users.map((u: any) => u._id.toString());
+      }
+      // 🔔 Create notification in DB
+      Notification.create({
+        createFor: userIds,
+        title: body.taskTitle,
+        description: message,
+      });
 
+      // 📲 Send push notification
+      sendPushNotification(userIds, body.taskTitle, message);
       await Notification_Create(body.assignee, body.taskTitle, message);
 
       return res.status(201).json({
@@ -389,12 +404,16 @@ export default class TaskController {
       if (!user?.sub) {
         return res.status(400).json({ message: "User ID is required" });
       }
-
+      console.log("usersub", user.sub, typeof user.sub);
       // Step 1: Build base query
       const query: any = {
         assignee: { $in: [user.sub] },
+        status: {
+          $elemMatch: {
+            status: { $ne: "cancel" },
+          },
+        },
       };
-
       if (priority) query.priority = priority;
       if (taskDate) query.taskDate = new Date(taskDate);
       if (search) {
@@ -878,6 +897,9 @@ export default class TaskController {
             .json({ message: "Task already exit in company bucket!" });
         }
         task.companyBucket = true;
+        task.assignee = task.assignee.filter(
+          (a: any) => a.toString() !== userId.toString()
+        );
       } else if (toBucket === "none") {
         task.companyBucket = false;
       }
@@ -895,8 +917,129 @@ export default class TaskController {
       });
     }
   }
-  // controllers/taskController.ts
-  // controllers/taskController.ts
+  async pickTask(req: AuthRequest, res: Response) {
+    try {
+      const { taskId, assignee, bucketType, targetDate } = req.body;
+      console.log("body", req.body);
+
+      const task: any = await Task.findById(
+        new mongoose.Types.ObjectId(taskId)
+      );
+      if (!task) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+
+      // ✅ ensure we use local timezone
+      const localTimeZone = DateTime.local().zoneName;
+      const now = DateTime.local().setZone(localTimeZone).toJSDate();
+      const target = DateTime.fromISO(targetDate, {
+        zone: localTimeZone,
+      }).toJSDate();
+
+      if (bucketType === "individual") {
+        // update individualBucket for this user
+        task.individualBucket = task.individualBucket.map((ib: any) =>
+          ib.user.toString() === assignee
+            ? { ...ib.toObject(), individual: false }
+            : ib
+        );
+
+        // update dueDate for this user
+        task.dueDate = task.dueDate.filter(
+          (d: any) => d.user.toString() !== assignee
+        );
+        task.dueDate.push({
+          user: assignee,
+          date: [target],
+        });
+
+        // update status for this user
+        task.status = task.status.filter(
+          (s: any) => s.user.toString() !== assignee
+        );
+        task.status.push({
+          user: assignee,
+          status: "assignee",
+        });
+
+        // push startDate
+        task.startDate.push({
+          user: assignee,
+          date: now,
+        });
+
+        // push statusHistory
+        task.statusHistory.push({
+          status: "assignee",
+          changedAt: now,
+          changedBy: assignee,
+          address: req.body.address || null,
+        });
+      }
+
+      if (bucketType === "company") {
+        // push into assignee array if not exists
+        if (!task.assignee.find((a: any) => a.toString() === assignee)) {
+          task.assignee.push(assignee);
+        }
+
+        // update individualBucket for this user
+        task.individualBucket = task.individualBucket.map((ib: any) =>
+          ib.user.toString() === assignee
+            ? { ...ib.toObject(), individual: false }
+            : ib
+        );
+
+        // update dueDate
+        task.dueDate = task.dueDate.filter(
+          (d: any) => d.user.toString() !== assignee
+        );
+        task.dueDate.push({
+          user: assignee,
+          date: [target],
+        });
+
+        // ✅ add targetDate for company bucket
+        task.targetDate = target;
+
+        // update status
+        task.status = task.status.filter(
+          (s: any) => s.user.toString() !== assignee
+        );
+        task.status.push({
+          user: assignee,
+          status: "assignee",
+        });
+
+        // push startDate
+        task.startDate.push({
+          user: assignee,
+          date: now,
+        });
+
+        // push statusHistory
+        task.statusHistory.push({
+          status: "assignee",
+          changedAt: now,
+          changedBy: assignee,
+          address: req.body.address || null,
+        });
+      }
+
+      await task.save();
+
+      return res.status(200).json({
+        message: "Task updated successfully",
+        task,
+      });
+    } catch (error: any) {
+      console.error("Error updating task:", error.message);
+      return res.status(500).json({
+        message: "Internal Server Error",
+        error: error.message,
+      });
+    }
+  }
   async estimatedTimeUpdate(req: AuthRequest, res: Response) {
     try {
       const { _id, userEstimatedTimes } = req.body;
@@ -1019,54 +1162,82 @@ export default class TaskController {
     return apiTasks.map((task) => {
       const loginId = String(loginUserId);
 
-      const userAssignee = task.assignee?.find(
-        (a: any) => String(a?._id) === loginId
-      );
+      const userAssignee = task.assignee
+        ? [task.assignee.find((a: any) => String(a?._id) === loginId)].filter(
+            Boolean
+          )
+        : [];
 
-      const userEstimatedTime = task.userEstimatedTime?.find(
-        (u: any) => String(u?.user?._id) === loginId
-      );
+      const userEstimatedTime = task.userEstimatedTime
+        ? [
+            task.userEstimatedTime.find(
+              (u: any) => String(u?.user?._id) === loginId
+            ),
+          ].filter(Boolean)
+        : [];
 
-      const userStatus = task.status?.find(
-        (s: any) => String(s?.user?._id) === loginId
-      );
+      const userStatus = task.status
+        ? [
+            task.status.find((s: any) => String(s?.user?._id) === loginId),
+          ].filter(Boolean)
+        : [];
 
-      const userStartDate = task.startDate?.find(
-        (s: any) => String(s?.user ?? s) === loginId
-      );
+      const userStartDate = task.startDate
+        ? [
+            task.startDate.find((s: any) => String(s?.user ?? s) === loginId),
+          ].filter(Boolean)
+        : [];
 
-      const userTargetDate = task.endDate?.find(
-        (e: any) => String(e?.user ?? e) === loginId
-      );
+      const userTargetDate = task.endDate
+        ? [
+            task.endDate.find((e: any) => String(e?.user ?? e) === loginId),
+          ].filter(Boolean)
+        : [];
 
-      const userDueDate = task.dueDate?.find(
-        (d: any) => String(d?.user?._id) === loginId
-      );
+      const userDueDate = task.dueDate
+        ? [
+            task.dueDate.find((d: any) => String(d?.user?._id) === loginId),
+          ].filter(Boolean)
+        : [];
 
-      const userEvaluation = task.evaluation?.find(
-        (d: any) => String(d?.user?._id) === loginId
-      );
+      const userEvaluation = task.evaluation
+        ? [
+            task.evaluation.find((d: any) => String(d?.user?._id) === loginId),
+          ].filter(Boolean)
+        : [];
 
-      const userStatusHistory = task.statusHistory?.find(
-        (d: any) => String(d?.changedBy?._id) === loginId
-      );
+      const userStatusHistory = task.statusHistory
+        ? [
+            task.statusHistory.find(
+              (d: any) => String(d?.changedBy?._id) === loginId
+            ),
+          ].filter(Boolean)
+        : [];
 
-      const userAccept = task.accept?.find(
-        (s: any) => String(s?.user?._id) === loginId
-      );
+      const userAccept = task.accept
+        ? [
+            task.accept.find((s: any) => String(s?.user?._id) === loginId),
+          ].filter(Boolean)
+        : [];
 
-      const userActionEvents = task.actionEvents?.find(
-        (s: any) => String(s?.user?._id) === loginId
-      );
+      const userActionEvents = task.actionEvents
+        ? [
+            task.actionEvents.find(
+              (s: any) => String(s?.user?._id) === loginId
+            ),
+          ].filter(Boolean)
+        : [];
 
-      const userTimeSpent = task.time_spent?.find(
-        (t: any) => String(t?.user ?? t) === loginId
-      );
+      const userTimeSpent = task.time_spent
+        ? [
+            task.time_spent.find((t: any) => String(t?.user ?? t) === loginId),
+          ].filter(Boolean)
+        : [];
 
       return {
         id: task._id,
-        name: task.taskTitle,
-        description: task.taskDescription,
+        taskTitle: task.taskTitle,
+        taskDescription: task.taskDescription,
         assignee: userAssignee ?? null,
         priority: task.priority,
         taskDate: task.taskDate,

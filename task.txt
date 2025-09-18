@@ -1,1 +1,7 @@
-deploye on render for best
+repeat task setting
+fixed time for create repeat task / company working time(start of work time)
+company weekly holiday (select day on which repeat task will not generate)
+
+attendance 
+lunch time 
+
