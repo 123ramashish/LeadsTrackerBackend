@@ -168,8 +168,9 @@ export default class TaskController {
       return res.status(500).json({ message: error.message });
     }
   }
-  async getAllTask(req: Request, res: Response) {
+  async getAllTask(req: AuthRequest, res: Response) {
     try {
+      const user: any = req.user;
       const normalize = (val: any) =>
         val && val !== "null" && val !== "undefined" && val !== "" ? val : null;
 
@@ -182,7 +183,7 @@ export default class TaskController {
         company,
         tags,
         search,
-        limit = "20",
+        limit = "100",
         skip = "0",
         sortBy = "createdAt",
         order = "desc",
@@ -191,11 +192,11 @@ export default class TaskController {
         noOfEntryRange,
         individualBucket,
       } = req.query as any;
-
+      console.log("individualBucket", individualBucket);
       const _status = normalize(status);
       const _priority = normalize(priority);
       const _assignee = normalize(assignee);
-      const _createdBy = normalize(createdBy);
+      const _createdBy = normalize(user.role === "admin" ? "" : user?.sub);
       const _tags = normalize(tags);
       const _company = normalize(company);
       const _search = normalize(search);
@@ -223,15 +224,20 @@ export default class TaskController {
         };
       }
       if (_createdBy) {
-        filter.createdBy = {
-          $in: _createdBy.split(",").map((c: any) => c.trim()),
-        };
+        const createdByArray = Array.isArray(_createdBy)
+          ? _createdBy
+          : String(_createdBy)
+              .split(",")
+              .map((c) => c.trim())
+              .filter((c) => c);
+
+        filter.createdBy = { $in: createdByArray };
       }
       if (_tags) {
         filter.tags = { $in: _tags.split(",").map((t: any) => t.trim()) };
       }
       if (_company) {
-        filter.company = _company;
+        filter.company = user?.sub;
       }
 
       // ✅ Text search
@@ -275,9 +281,17 @@ export default class TaskController {
         }
       }
 
-      // ✅ Boolean field
-      if (_individualBucket !== null) {
-        filter.individualBucket = _individualBucket === "true";
+      if (_individualBucket !== null && _assignee) {
+        filter.individualBucket = {
+          $elemMatch: {
+            user: { $in: _assignee },
+            individual: _individualBucket === "true",
+          },
+        };
+      } else if (_individualBucket !== null) {
+        filter["individualBucket.individual"] = _individualBucket === "true";
+      } else {
+        filter["individualBucket.individual"] = false;
       }
 
       // ✅ Sorting
@@ -285,6 +299,7 @@ export default class TaskController {
       sort[sortBy] = order === "asc" ? 1 : -1;
 
       // ✅ Query DB
+      console.log("filter", filter);
       const tasks = await Task.find(filter)
         .populate("assignee", "_id name role")
         .populate("userEstimatedTime.user", "_id name role")
@@ -475,19 +490,20 @@ export default class TaskController {
 
   async updateTaskStatus(req: AuthRequest, res: Response) {
     try {
-      const { id, company, status, loginUser, address } = req.body;
-      console.log("body", req.body);
+      const user: any = req.user;
+      const { id, company, status, userStatusId, address } = req.body;
+      const localTimeZone = DateTime.local().zoneName;
+      const userId = new mongoose.Types.ObjectId(userStatusId);
+
+      // ✅ 1. Check if user already has an in-progress task
       if (status === "in progress") {
         const existingTask = await Task.findOne({
           company,
-          assignee: loginUser.id,
+          assignee: userStatusId,
           status: {
-            $elemMatch: {
-              user: loginUser.id,
-              status: "in progress",
-            },
+            $elemMatch: { user: userStatusId, status: "in progress" },
           },
-        });
+        }).select("_id");
 
         if (existingTask) {
           return res.status(400).json({
@@ -497,6 +513,8 @@ export default class TaskController {
           });
         }
       }
+
+      // ✅ 2. Load task
       const task = await Task.findOne({
         _id: new mongoose.Types.ObjectId(id),
         company: new mongoose.Types.ObjectId(company),
@@ -505,37 +523,118 @@ export default class TaskController {
       if (!task) {
         return res.status(404).json({ message: "Task not found" });
       }
-      if (status === "completed") {
-        const hasUserComment = task.comments.some(
-          (c) => String(c.createdBy) === String(loginUser.id)
-        );
 
-        if (!hasUserComment) {
+      // ✅ 3. Pre-scan arrays in a single pass
+      let userStatusEntry: any = null;
+      let userEndDate: any = null;
+      let userDueDates: Date[] = [];
+      let latestHistory: any = null;
+      let userTimeSpent: any = null;
+      let hasUserComment = false;
+
+      const now = DateTime.local().setZone(localTimeZone);
+
+      // scan status
+      for (const s of task.status as any) {
+        if (s.user.toString() === userStatusId) {
+          userStatusEntry = s;
+          break;
+        }
+      }
+
+      // scan endDate
+      for (const ed of task.endDate as any) {
+        if (ed.user.toString() === userStatusId) {
+          userEndDate = ed;
+          break;
+        }
+      }
+
+      // scan dueDate
+      for (const dd of task.dueDate as any) {
+        if (dd.user.toString() === userStatusId) {
+          userDueDates = dd.date || [];
+          break;
+        }
+      }
+
+      // scan statusHistory → pick latest in one pass
+      for (const h of task.statusHistory as any) {
+        if (h.changedBy.toString() === userId.toString()) {
+          if (
+            !latestHistory ||
+            new Date(h.changedAt).getTime() >
+              new Date(latestHistory.changedAt).getTime()
+          ) {
+            latestHistory = h;
+          }
+        }
+      }
+
+      // scan time_spent
+      for (const t of task.time_spent as any) {
+        if (t.user.toString() === userId.toString()) {
+          userTimeSpent = t;
+          break;
+        }
+      }
+
+      // scan comments
+      for (const c of task.comments as any) {
+        if (String(c.createdBy) === String(userStatusId)) {
+          hasUserComment = true;
+          break;
+        }
+      }
+
+      // ✅ 4. Validation: canceled task
+      if (userStatusEntry?.status === "cancel" && user.role !== "admin") {
+        return res.status(400).json({
+          success: false,
+          message: "Task is canceled, only admin can change status.",
+        });
+      }
+
+      // ✅ 5. Validation: due/end date
+      const validStatuses = ["assignee", "in progress", "expired", "completed"];
+      if (validStatuses.includes(status)) {
+        let hasValidDate = false;
+
+        if (userEndDate?.date) {
+          const endDate = DateTime.fromJSDate(userEndDate.date, {
+            zone: localTimeZone,
+          });
+          if (endDate > now) hasValidDate = true;
+        }
+
+        if (userDueDates.length) {
+          if (
+            userDueDates.some(
+              (d) => DateTime.fromJSDate(d, { zone: localTimeZone }) > now
+            )
+          ) {
+            hasValidDate = true;
+          }
+        }
+
+        if (!hasValidDate) {
           return res.status(400).json({
             success: false,
-            message: "You must add a comment before completing the task.",
+            message: "Target date must be updated before changing status.",
           });
         }
       }
-      const localTimeZone = DateTime.local().zoneName;
 
-      const userId = new mongoose.Types.ObjectId(loginUser.id);
+      // ✅ 6. Validation: completed must have comment
+      if (status === "completed" && !hasUserComment) {
+        return res.status(400).json({
+          success: false,
+          message: "You must add a comment before completing the task.",
+        });
+      }
 
-      // Get the latest status history for this user
-      const userHistory = task.statusHistory
-        .filter(
-          (entry: any) => entry.changedBy.toString() === userId.toString()
-        )
-        .sort(
-          (a: any, b: any) =>
-            new Date(b.changedAt).getTime() - new Date(a.changedAt).getTime()
-        );
-
-      const latestHistory = userHistory[0];
-
-      // If latest status is "in progress" → calculate spent time
-      if (latestHistory && latestHistory.status === "in progress") {
-        const now = DateTime.now().setZone(localTimeZone);
+      // ✅ 7. Time spent calc if last status was in progress
+      if (latestHistory?.status === "in progress") {
         const minutesSpent = Math.floor(
           (now.toMillis() -
             DateTime.fromJSDate(latestHistory.changedAt)
@@ -544,32 +643,37 @@ export default class TaskController {
             60000
         );
 
-        // Update time_spent for this user
-        let timeEntry = task.time_spent.find(
-          (t: any) => t.user.toString() === userId.toString()
-        );
-        if (timeEntry) {
-          timeEntry.time.push(minutesSpent);
+        if (userTimeSpent) {
+          userTimeSpent.time.push(minutesSpent);
         } else {
           task.time_spent.push({ user: userId, time: [minutesSpent] });
         }
       }
 
-      // Update the user's current status in task.status
-      let statusEntry = task.status.find(
-        (s: any) => s.user.toString() === userId.toString()
-      );
-      if (statusEntry) {
-        statusEntry.status = status;
+      // ✅ 8. Update user status
+      if (userStatusEntry) {
+        userStatusEntry.status = status;
       } else {
         task.status.push({ user: userId, status });
-        task.Accept.push({ user: userId, status: true });
       }
+      // ✅ 9. Ensure Accept is true for this user
+      if (status !== "cancel") {
+        const userAccept = task.Accept.find(
+          (a: any) => a.user.toString() === userId.toString()
+        );
 
-      // Push new entry into statusHistory
+        if (userAccept) {
+          if (!userAccept.status) {
+            userAccept.status = true;
+          }
+        } else {
+          task.Accept.push({ user: userId, status: true });
+        }
+      }
+      // ✅ 10. Push status history
       task.statusHistory.push({
         status,
-        changedAt: DateTime.now().setZone(localTimeZone).toISO(),
+        changedAt: now.toISO(),
         changedBy: userId,
         address: address || null,
       });
@@ -830,13 +934,28 @@ export default class TaskController {
 
   async individualBucket(req: AuthRequest, res: Response) {
     try {
-      console.log("api call");
-      const user: any = req.user;
-      const tasks = await Task.find({
-        individualBucket: {
-          $elemMatch: { user: user.sub, individual: true },
-        },
-      });
+      const authUser: any = req.user;
+      let { userId } = req.query; // could be string or array
+      console.log("userid", userId);
+      let query: any = {};
+
+      if (userId) {
+        // Ensure userId is always an array
+        const userIds = Array.isArray(userId) ? userId : [userId];
+
+        query = {
+          individualBucket: {
+            $elemMatch: { user: { $in: userIds }, individual: true },
+          },
+        };
+      } else {
+        // If no userId provided → return all tasks where any user has individual = true
+        query = {
+          "individualBucket.individual": true,
+        };
+      }
+
+      const tasks = await Task.find(query);
 
       return res.status(200).json({
         message: "Individual bucket tasks fetched successfully",
@@ -873,22 +992,23 @@ export default class TaskController {
   async bucketShift(req: AuthRequest, res: Response) {
     try {
       const { taskId, userId, toBucket } = req.body;
-      console.log("body", req.body);
 
       if (!taskId || !userId || !toBucket) {
         return res.status(400).json({ message: "Missing required fields" });
       }
-      const task = await Task.findById(taskId);
+      const task: any = await Task.findById(taskId);
       if (!task) {
         return res.status(404).json({ message: "Task not found" });
       }
-      // Update individualBucket
-      const individualEntry = task.individualBucket.find(
-        (entry: any) => entry.user.toString() === userId
-      );
-      if (individualEntry) {
-        individualEntry.individual = toBucket === "individual";
-      }
+      const userIds: string[] = Array.isArray(userId) ? userId : [userId];
+
+      // Update individualBucket for each user
+      task.individualBucket.forEach((entry: any) => {
+        if (userIds.includes(entry.user.toString())) {
+          entry.individual = toBucket === "individual";
+        }
+      });
+
       // Update companyBucket
       if (toBucket === "company") {
         if (task.companyBucket) {
@@ -898,7 +1018,7 @@ export default class TaskController {
         }
         task.companyBucket = true;
         task.assignee = task.assignee.filter(
-          (a: any) => a.toString() !== userId.toString()
+          (a: any) => !userIds.includes(a.toString())
         );
       } else if (toBucket === "none") {
         task.companyBucket = false;
@@ -906,7 +1026,7 @@ export default class TaskController {
       await task.save();
 
       return res.status(200).json({
-        message: "Bucket updated successfully",
+        message: "Task send to bucket successfully!",
         task,
       });
     } catch (error: any) {
@@ -937,65 +1057,79 @@ export default class TaskController {
       }).toJSDate();
 
       if (bucketType === "individual") {
-        // update individualBucket for this user
+        const assignees = Array.isArray(assignee) ? assignee : [assignee];
+
+        // update individualBucket for each user
         task.individualBucket = task.individualBucket.map((ib: any) =>
-          ib.user.toString() === assignee
-            ? { ...ib.toObject(), individual: false }
+          assignees.includes(ib.user.toString())
+            ? { ...ib.toObject?.(), individual: false }
             : ib
         );
 
-        // update dueDate for this user
+        // remove old dueDate entries of assignees
         task.dueDate = task.dueDate.filter(
-          (d: any) => d.user.toString() !== assignee
+          (d: any) => !assignees.includes(d.user.toString())
         );
-        task.dueDate.push({
-          user: assignee,
-          date: [target],
+
+        // add new dueDate entries
+        assignees.forEach((a) => {
+          task.dueDate.push({
+            user: a,
+            date: [target],
+          });
         });
 
-        // update status for this user
+        // remove old status entries of assignees
         task.status = task.status.filter(
-          (s: any) => s.user.toString() !== assignee
+          (s: any) => !assignees.includes(s.user.toString())
         );
-        task.status.push({
-          user: assignee,
-          status: "assignee",
+
+        // add new status entries
+        assignees.forEach((a) => {
+          task.status.push({
+            user: a,
+            status: "assignee",
+          });
         });
 
-        // push startDate
-        task.startDate.push({
-          user: assignee,
-          date: now,
+        // add startDate entries
+        assignees.forEach((a) => {
+          task.startDate.push({
+            user: a,
+            date: now,
+          });
         });
 
-        // push statusHistory
-        task.statusHistory.push({
-          status: "assignee",
-          changedAt: now,
-          changedBy: assignee,
-          address: req.body.address || null,
+        // add statusHistory entries
+        assignees.forEach((a) => {
+          task.statusHistory.push({
+            status: "assignee",
+            changedAt: now,
+            changedBy: a,
+            address: req.body.address || null,
+          });
         });
       }
 
       if (bucketType === "company") {
         // push into assignee array if not exists
         if (!task.assignee.find((a: any) => a.toString() === assignee)) {
-          task.assignee.push(assignee);
+          task.assignee.push(assignee[0]);
         }
 
         // update individualBucket for this user
         task.individualBucket = task.individualBucket.map((ib: any) =>
-          ib.user.toString() === assignee
+          ib.user.toString() === assignee[0]
             ? { ...ib.toObject(), individual: false }
             : ib
         );
 
         // update dueDate
         task.dueDate = task.dueDate.filter(
-          (d: any) => d.user.toString() !== assignee
+          (d: any) => d.user.toString() !== assignee[0]
         );
         task.dueDate.push({
-          user: assignee,
+          user: assignee[0],
           date: [target],
         });
 
@@ -1004,16 +1138,16 @@ export default class TaskController {
 
         // update status
         task.status = task.status.filter(
-          (s: any) => s.user.toString() !== assignee
+          (s: any) => s.user.toString() !== assignee[0]
         );
         task.status.push({
-          user: assignee,
+          user: assignee[0],
           status: "assignee",
         });
 
         // push startDate
         task.startDate.push({
-          user: assignee,
+          user: assignee[0],
           date: now,
         });
 
@@ -1021,7 +1155,7 @@ export default class TaskController {
         task.statusHistory.push({
           status: "assignee",
           changedAt: now,
-          changedBy: assignee,
+          changedBy: assignee[0] || assignee,
           address: req.body.address || null,
         });
       }
@@ -1053,7 +1187,6 @@ export default class TaskController {
       if (!task) {
         return res.status(404).json({ message: "Task not found" });
       }
-
       // Update each user's estimated time
       userEstimatedTimes.forEach((update: any) => {
         const entry = task.userEstimatedTime.find(
@@ -1214,9 +1347,9 @@ export default class TaskController {
           ].filter(Boolean)
         : [];
 
-      const userAccept = task.accept
+      const userAccept = task.Accept
         ? [
-            task.accept.find((s: any) => String(s?.user?._id) === loginId),
+            task.Accept.find((s: any) => String(s?.user?._id) === loginId),
           ].filter(Boolean)
         : [];
 
