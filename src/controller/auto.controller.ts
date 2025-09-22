@@ -139,7 +139,7 @@ export default class AutoStatusUpdater {
       console.log("[AUTO REPEAT TASK] Starting repeat task creation...");
       const localTimeZone = DateTime.local().zoneName;
       const today = DateTime.now().setZone(localTimeZone);
-      console.log("today",today);
+      console.log("today", today);
 
       // 1. Check holiday
       const isHoliday = await this.checkIfHoliday(today.toJSDate());
@@ -171,12 +171,12 @@ export default class AutoStatusUpdater {
           message: "No active users",
         };
       }
-console.log("activeUserId",activeUserIds)
+      console.log("activeUserId", activeUserIds)
       // 4. Find tasks assigned to active users with expired dates
       const repeatTasks = await RepeatTask.find({
         assignee: { $in: activeUserIds },
       }).lean();
-console.log("repeatTask",repeatTasks)
+      console.log("repeatTask", repeatTasks)
       let createdCount = 0;
       let skippedCount = 0;
 
@@ -193,17 +193,26 @@ console.log("repeatTask",repeatTasks)
 
           const shouldCreate = this.shouldCreateRepeatTask(repeatTask, today);
           if (!shouldCreate) continue;
-
-          const exists = await this.taskExistsForToday(repeatTask._id, today);
+          const repeatTaskIdLength = repeatTask?.repeatTaskId?.length;
+          const exists = await this.taskExistsForToday(repeatTask?.repeatTaskId[repeatTaskIdLength - 1], today);
+          console.log("exist", exists)
           if (exists) continue;
 
           const result = await this.createTaskFromRepeat(
             repeatTask._id.toString(),
             today.toJSDate()
           );
-
-          if (result.success) createdCount++;
-          else skippedCount++;
+          console.log("result", result)
+          if (result.success) {
+            await RepeatTask.findByIdAndUpdate(
+              repeatTask._id,
+              { $push: { repeatTaskId: result?.task?._id } },
+              { new: true }
+            );
+            createdCount++;
+          } else {
+            skippedCount++;
+          }
         } catch (err) {
           console.error(
             `Error processing repeat task ${repeatTask.taskTitle}:`,
@@ -237,11 +246,11 @@ console.log("repeatTask",repeatTasks)
       );
       if (!repeatTask) throw new Error("Repeat task not found");
       const localTimeZone = DateTime.local().zoneName;
-      const taskDate =DateTime.now().setZone(localTimeZone);
+      const taskDate = DateTime.now().setZone(localTimeZone);
       const startDate = taskDate.startOf("day").toJSDate();
       const endDate = taskDate.endOf("day").toJSDate();
 
-     
+
       // Collect assignees
       let assignees: string[] =
         repeatTask.assignee?.map(
@@ -275,7 +284,7 @@ console.log("repeatTask",repeatTasks)
       const dueDate = assignees.map((userId) => ({
         user: userId,
         date: [endDate],
-      }));      
+      }));
 
       // ✅ Status per assignee
       const status = assignees.map((userId) => ({
@@ -304,17 +313,16 @@ console.log("repeatTask",repeatTasks)
         notes: repeatTask.notes || "",
         status,
         company: new mongoose.Types.ObjectId(repeatTask.company),
-        individualBucket:assignees.map((userId) => ({
+        individualBucket: assignees.map((userId) => ({
           user: userId,
           individual: false,
         })),
-        companyBucket:false,
+        companyBucket: false,
         repeatTaskId: repeatTask._id,
         divideTime: repeatTask.divideTime || false,
       });
 
-      await task.save();
-
+      const taskCreated = await task.save();
       // 🔔 Notifications
       const message = `You have been assigned a task '${repeatTask.taskTitle}'`;
       if (assignees.length > 0) {
@@ -327,7 +335,7 @@ console.log("repeatTask",repeatTasks)
         await Notification_Create(assignees, repeatTask.taskTitle, message);
       }
 
-      return { success: true, task };
+      return { success: true, task, taskCreated };
     } catch (error) {
       console.error("Error creating task from repeat:", error);
       throw error;
@@ -451,13 +459,17 @@ console.log("repeatTask",repeatTasks)
     repeatTaskId: mongoose.Types.ObjectId,
     today: DateTime
   ): Promise<boolean> {
+    const startOfDay = today.startOf('day').toJSDate();
+    const endOfDay = today.endOf('day').toJSDate();
+
     const existingTask = await Task.findOne({
-      repeatTaskId,
+      _id: new mongoose.Types.ObjectId(repeatTaskId),
       updatedAt: {
-        $gte: today.toJSDate(),
-        $lt: today.plus({ days: 1 }).toJSDate(),
+        $gte: startOfDay,
+        $lte: endOfDay,
       },
     });
+    console.log("existingTask", existingTask)
     return !!existingTask;
   }
 }
