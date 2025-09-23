@@ -992,7 +992,7 @@ export default class TaskController {
   async bucketShift(req: AuthRequest, res: Response) {
     try {
       const { taskId, userId, toBucket } = req.body;
-
+console.log(taskId,userId,toBucket)
       if (!taskId || !userId || !toBucket) {
         return res.status(400).json({ message: "Missing required fields" });
       }
