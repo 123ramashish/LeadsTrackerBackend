@@ -6,7 +6,7 @@ import axios from "axios";
 import nodemailer from "nodemailer";
 export default class AuthController {
   async loginWithEmail(req: Request, res: Response) {
-    try {
+    try {       
       const { email, password } = req.body;
       const user: any = await User.findOne({ email });
       if (!user) return res.status(401).json({ message: "User not found" });
