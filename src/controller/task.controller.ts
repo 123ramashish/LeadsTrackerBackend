@@ -227,9 +227,9 @@ export default class TaskController {
         const createdByArray = Array.isArray(_createdBy)
           ? _createdBy
           : String(_createdBy)
-              .split(",")
-              .map((c) => c.trim())
-              .filter((c) => c);
+            .split(",")
+            .map((c) => c.trim())
+            .filter((c) => c);
 
         filter.createdBy = { $in: createdByArray };
       }
@@ -348,9 +348,9 @@ export default class TaskController {
         assigneeIds.length === 0
           ? await User.find({ company }, "_id name phone")
           : await User.find(
-              { _id: { $in: assigneeIds }, company },
-              "_id name phone"
-            );
+            { _id: { $in: assigneeIds }, company },
+            "_id name phone"
+          );
 
       const results = [];
 
@@ -419,13 +419,13 @@ export default class TaskController {
       if (!user?.sub) {
         return res.status(400).json({ message: "User ID is required" });
       }
-      console.log("usersub", user.sub, typeof user.sub);
+      console.log("staus", status);
       // Step 1: Build base query
       const query: any = {
         assignee: { $in: [user.sub] },
         status: {
           $elemMatch: {
-            status: { $ne: "cancel" },
+            status: status ? { $eq: status } : { $ne: "cancel" }
           },
         },
       };
@@ -564,7 +564,7 @@ export default class TaskController {
           if (
             !latestHistory ||
             new Date(h.changedAt).getTime() >
-              new Date(latestHistory.changedAt).getTime()
+            new Date(latestHistory.changedAt).getTime()
           ) {
             latestHistory = h;
           }
@@ -640,7 +640,7 @@ export default class TaskController {
             DateTime.fromJSDate(latestHistory.changedAt)
               .setZone(localTimeZone)
               .toMillis()) /
-            60000
+          60000
         );
 
         if (userTimeSpent) {
@@ -992,7 +992,7 @@ export default class TaskController {
   async bucketShift(req: AuthRequest, res: Response) {
     try {
       const { taskId, userId, toBucket } = req.body;
-console.log(taskId,userId,toBucket)
+      console.log(taskId, userId, toBucket)
       if (!taskId || !userId || !toBucket) {
         return res.status(400).json({ message: "Missing required fields" });
       }
@@ -1297,74 +1297,74 @@ console.log(taskId,userId,toBucket)
 
       const userAssignee = task.assignee
         ? [task.assignee.find((a: any) => String(a?._id) === loginId)].filter(
-            Boolean
-          )
+          Boolean
+        )
         : [];
 
       const userEstimatedTime = task.userEstimatedTime
         ? [
-            task.userEstimatedTime.find(
-              (u: any) => String(u?.user?._id) === loginId
-            ),
-          ].filter(Boolean)
+          task.userEstimatedTime.find(
+            (u: any) => String(u?.user?._id) === loginId
+          ),
+        ].filter(Boolean)
         : [];
 
       const userStatus = task.status
         ? [
-            task.status.find((s: any) => String(s?.user?._id) === loginId),
-          ].filter(Boolean)
+          task.status.find((s: any) => String(s?.user?._id) === loginId),
+        ].filter(Boolean)
         : [];
 
       const userStartDate = task.startDate
         ? [
-            task.startDate.find((s: any) => String(s?.user ?? s) === loginId),
-          ].filter(Boolean)
+          task.startDate.find((s: any) => String(s?.user ?? s) === loginId),
+        ].filter(Boolean)
         : [];
 
       const userTargetDate = task.endDate
         ? [
-            task.endDate.find((e: any) => String(e?.user ?? e) === loginId),
-          ].filter(Boolean)
+          task.endDate.find((e: any) => String(e?.user ?? e) === loginId),
+        ].filter(Boolean)
         : [];
 
       const userDueDate = task.dueDate
         ? [
-            task.dueDate.find((d: any) => String(d?.user?._id) === loginId),
-          ].filter(Boolean)
+          task.dueDate.find((d: any) => String(d?.user?._id) === loginId),
+        ].filter(Boolean)
         : [];
 
       const userEvaluation = task.evaluation
         ? [
-            task.evaluation.find((d: any) => String(d?.user?._id) === loginId),
-          ].filter(Boolean)
+          task.evaluation.find((d: any) => String(d?.user?._id) === loginId),
+        ].filter(Boolean)
         : [];
 
       const userStatusHistory = task.statusHistory
         ? [
-            task.statusHistory.find(
-              (d: any) => String(d?.changedBy?._id) === loginId
-            ),
-          ].filter(Boolean)
+          task.statusHistory.find(
+            (d: any) => String(d?.changedBy?._id) === loginId
+          ),
+        ].filter(Boolean)
         : [];
 
       const userAccept = task.Accept
         ? [
-            task.Accept.find((s: any) => String(s?.user?._id) === loginId),
-          ].filter(Boolean)
+          task.Accept.find((s: any) => String(s?.user?._id) === loginId),
+        ].filter(Boolean)
         : [];
 
       const userActionEvents = task.actionEvents
         ? [
-            task.actionEvents.find(
-              (s: any) => String(s?.user?._id) === loginId
-            ),
-          ].filter(Boolean)
+          task.actionEvents.find(
+            (s: any) => String(s?.user?._id) === loginId
+          ),
+        ].filter(Boolean)
         : [];
 
       const userTimeSpent = task.time_spent
         ? [
-            task.time_spent.find((t: any) => String(t?.user ?? t) === loginId),
-          ].filter(Boolean)
+          task.time_spent.find((t: any) => String(t?.user ?? t) === loginId),
+        ].filter(Boolean)
         : [];
 
       return {

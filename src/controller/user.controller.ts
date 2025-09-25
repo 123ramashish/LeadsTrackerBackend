@@ -85,7 +85,7 @@ export default class UserController {
   // Get all users (with optional role-based filtering)
   static async getUsers(req: Request, res: Response) {
     try {
-      const { role, page = 1, limit = 10, company } = req.query;
+      const { role, page = 1, limit = 100, company } = req.query;
       console.log("com", company);
       // ✅ Build query
       const query: any = { isDelete: false };
