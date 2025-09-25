@@ -16,12 +16,14 @@ taskRouter.get("/totalTaskAmountTime", auth_middleware_1.authenticate, taskContr
 taskRouter.get("/message", auth_middleware_1.authenticate, taskController.getTaskMessages);
 taskRouter.get("/individualBucket", auth_middleware_1.authenticate, taskController.individualBucket);
 taskRouter.put("/status", auth_middleware_1.authenticate, taskController.updateTaskStatus);
-taskRouter.put("/status", auth_middleware_1.authenticate, taskController.updateTaskStatus);
 taskRouter.post("/message", auth_middleware_1.authenticate, taskController.addTaskMessage);
-taskRouter.get("/:userId", auth_middleware_1.authenticate, taskController.getTaskById.bind(taskController));
+taskRouter.get("/taskById", auth_middleware_1.authenticate, taskController.getTaskById.bind(taskController));
 taskRouter.put("/timeline", auth_middleware_1.authenticate, taskController.updateTaskTimeline);
 taskRouter.put("/details", auth_middleware_1.authenticate, taskController.updateTaskDetails);
-taskRouter.put("/individualBucket", auth_middleware_1.authenticate, taskController.individualBucket);
 taskRouter.put("/companyBucket", auth_middleware_1.authenticate, taskController.companyBucket);
+taskRouter.put("/bucketShift", auth_middleware_1.authenticate, taskController.bucketShift);
+taskRouter.put("/estimatedTime", auth_middleware_1.authenticate, taskController.estimatedTimeUpdate);
+taskRouter.put("/tags", auth_middleware_1.authenticate, taskController.updateTags);
+taskRouter.put("/pickTask", auth_middleware_1.authenticate, taskController.pickTask);
 // taskRouter.delete("/:id",  taskController.deleteTask);
 exports.default = taskRouter;

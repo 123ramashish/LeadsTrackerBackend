@@ -17,7 +17,9 @@ const suggestions_router_1 = __importDefault(require("./suggestions.router"));
 const feedback_router_1 = __importDefault(require("./feedback.router"));
 const lead_router_1 = __importDefault(require("./lead.router"));
 const notification_router_1 = __importDefault(require("./notification.router"));
+const holiday_router_1 = __importDefault(require("./holiday.router"));
 const router = (0, express_1.Router)();
+router.use("/holidays", holiday_router_1.default);
 router.use("/dashboard", dashboard_router_1.default);
 router.use("/attendance", attendance_router_1.default);
 router.use("/suggestions", suggestions_router_1.default);
@@ -33,6 +35,6 @@ router.use("/file", file_router_1.default);
 router.use("/notifications", notification_router_1.default);
 // router.use("/auth/verify", verifyToken);
 router.use("/", (req, res) => {
-    res.status(200).json({ message: "Welcome to the Task Management API" });
+    res.status(200).json({ message: "Welcome to the Task Management API!" });
 });
 exports.default = router;

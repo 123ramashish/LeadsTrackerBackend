@@ -131,7 +131,6 @@ const TaskSchema = new mongoose_2.Schema({
     },
     taskDescription: {
         type: String,
-        required: true,
         trim: true,
     },
     estimatedTime: {
