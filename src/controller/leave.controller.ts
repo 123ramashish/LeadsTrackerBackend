@@ -137,12 +137,15 @@ export default class LeaveController {
 
       const statusFilter = (req.query.status as string) ?? undefined;
       const searchQuery = (req.query.search as string) ?? undefined;
+      const users = req.query.users 
 
       const query: any = {};
-      if (user.role === "staff" && user.sub !== "6729c5adf7ea686b24aed561") {
+      if (user.role === "staff") {
         query.user = user.sub;
+      } else {
+        query.user = users
       }
-
+      console.log("user", users,statusFilter)
       if (statusFilter && statusFilter !== "All") {
         query.status = statusFilter;
       }
