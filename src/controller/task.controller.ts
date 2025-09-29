@@ -36,11 +36,11 @@ export default class TaskController {
         return res.status(400).json({ message: "Missing required fields" });
       }
 
-      // ✅ Convert estimated time value to number
+      //  Convert estimated time value to number
       const totalValue = Number(body.estimatedTime.value);
       const unit = body.estimatedTime.unit;
 
-      // ✅ If no assignee provided, assign all users in company
+      //  If no assignee provided, assign all users in company
       if (!Array.isArray(body.assignee) || body.assignee.length === 0) {
         const users = await User.find({
           company: new mongoose.Types.ObjectId(body.company),
@@ -114,7 +114,6 @@ export default class TaskController {
         user: userId,
         status: "assignee",
       }));
-      console.log("task", body);
       // ✅ Create task
       const task = new Task({
         taskTitle: body.taskTitle,
@@ -140,7 +139,6 @@ export default class TaskController {
         companyBucket,
         divideTime: body.divide,
       });
-
       await task.save();
       const message = `You have been assigned a task '${body.taskTitle}`;
       let userIds = body.assignee ? body.assignee : [];
@@ -353,7 +351,7 @@ export default class TaskController {
           );
 
       const results = [];
-
+      console.log("assigneeId", req.query)
       for (const user of userList) {
         const tasks = await Task.find({
           company,
@@ -971,7 +969,7 @@ export default class TaskController {
     }
   }
 
-  // ✅ Company Bucket
+  //  Company Bucket
   async companyBucket(req: AuthRequest, res: Response) {
     try {
       const tasks = await Task.find({ companyBucket: true });
