@@ -329,10 +329,11 @@ export default class TaskController {
     }
   }
 
+
   async getTaskAmountTime(req: Request, res: Response) {
     try {
-      const { assignee, company } = req.query as {
-        assignee?: string;
+      const { assignees, company } = req.query as {
+        assignees?: any;
         company?: string;
       };
 
@@ -340,53 +341,33 @@ export default class TaskController {
         return res.status(400).json({ message: "Company ID is required" });
       }
 
-      const assigneeIds: string[] = assignee ? JSON.parse(assignee) : [];
+      let assigneeIds: string[] = [];
+      if (assignees) {
+        const arrayFormat = assignees.split(",");
 
-      const userList =
-        assigneeIds.length === 0
-          ? await User.find({ company }, "_id name phone")
-          : await User.find(
-            { _id: { $in: assigneeIds }, company },
-            "_id name phone"
-          );
-
-      const results = [];
-      console.log("assigneeId", req.query)
-      for (const user of userList) {
-        const tasks = await Task.find({
-          company,
-          assignee: user._id,
-        });
-
-        let totalMinutes = 0;
-
-        for (const task of tasks) {
-          const userEstimate = task.userEstimatedTime.find(
-            (et: any) => et.user.toString() === user._id.toString()
-          );
-
-          if (userEstimate) {
-            const { unit, value } = userEstimate.estimatedTime;
-
-            if (unit === "Minutes") totalMinutes += value;
-            else if (unit === "Hours") totalMinutes += value * 60;
-            else if (unit === "Days") totalMinutes += value * 1440;
-          }
-        }
-
-        const days = Math.floor(totalMinutes / 1440);
-        const hours = Math.floor((totalMinutes % 1440) / 60);
-        const minutes = totalMinutes % 60;
-
-        results.push({
-          userId: user._id,
-          name: user.name,
-          phone: user.phone,
-          totalAmount: { days, hours, minutes },
+        arrayFormat.forEach((id: string) => {
+          assigneeIds.push(id.trim());
         });
       }
+      else {
+        // If not provided, take all users from that company
+        const users = await User.find({ company }, "_id");
+        assigneeIds = users.map((u) => u._id.toString());
+      }
 
-      return res.status(200).json({ count: results.length, results });
+      // Fetch tasks
+      const taskAmount = await Task.find({
+        company: new mongoose.Types.ObjectId(company),
+        assignee: { $in: assigneeIds.map((id) => new mongoose.Types.ObjectId(id)) },
+        status: {
+          $elemMatch: {
+            user: { $in: assigneeIds.map((id) => new mongoose.Types.ObjectId(id)) },
+            status: { $nin: ["cancel", "completed"] },
+          },
+        },
+      });
+      console.log("taskAmount", JSON.stringify(taskAmount));
+      return res.status(200).json({ taskAmount });
     } catch (error: any) {
       console.error("Error calculating task time:", error.message);
       return res
@@ -394,6 +375,7 @@ export default class TaskController {
         .json({ message: "Internal Server Error", error: error.message });
     }
   }
+
 
   async getTaskById(req: AuthRequest, res: Response) {
     try {
