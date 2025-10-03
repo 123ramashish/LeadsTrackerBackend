@@ -62,7 +62,7 @@ export default class TaskController {
         estimatedTime: { unit, value: perUserValue },
       }));
 
-      // ✅ Get local timezone and convert dates
+      //  Get local timezone and convert dates
       const localTimeZone = DateTime.local().zoneName;
 
       const startDate = new Date(
@@ -190,11 +190,10 @@ export default class TaskController {
         noOfEntryRange,
         individualBucket,
       } = req.query as any;
-      console.log("individualBucket", individualBucket);
       const _status = normalize(status);
       const _priority = normalize(priority);
       const _assignee = normalize(assignee);
-      const _createdBy = normalize(user.role === "admin" ? "" : user?.sub);
+      const _createdBy = normalize(user.role === "admin" ? createdBy : user?.sub);
       const _tags = normalize(tags);
       const _company = normalize(company);
       const _search = normalize(search);
@@ -204,21 +203,22 @@ export default class TaskController {
       const _individualBucket = normalize(individualBucket);
 
       const filter: any = {};
-
+      const localTimeZone = DateTime.local().zoneName;
+      console.log("daterange", JSON.stringify(dateRange, null, 2), JSON.stringify(_dateRange, null, 2));
       // ✅ Multi-value fields
       if (_status) {
         filter["status.status"] = {
-          $in: _status.split(",").map((s: any) => s.trim()),
+          $in: _status.split(",").map((s: any) => s.trim().toLowerCase()),
         };
       }
       if (_priority) {
         filter.priority = {
-          $in: _priority.split(",").map((p: any) => p.trim()),
+          $in: _priority.split(",").map((p: any) => p.trim().toLowerCase()),
         };
       }
       if (_assignee) {
         filter.assignee = {
-          $in: _assignee.split(",").map((a: any) => a.trim()),
+          $in: _assignee.split(",").map((a: any) => a.trim().toLowerCase()),
         };
       }
       if (_createdBy) {
@@ -250,8 +250,11 @@ export default class TaskController {
       if (_dateRange) {
         const [start, end] = _dateRange.split(",");
         if (start && end) {
-          const startDate = new Date(start);
-          const endDate = new Date(end);
+          const startDt = DateTime.fromISO(start).setZone(localTimeZone).startOf('day');
+          const endDt = DateTime.fromISO(end).setZone(localTimeZone).endOf('day');
+          const startDate = startDt.toJSDate();
+          const endDate = endDt.toJSDate();
+
           filter.$or = [
             { taskDate: { $gte: startDate, $lte: endDate } },
             {
@@ -297,7 +300,7 @@ export default class TaskController {
       sort[sortBy] = order === "asc" ? 1 : -1;
 
       // ✅ Query DB
-      console.log("filter", filter);
+      console.log("filter", JSON.stringify(filter));
       const tasks = await Task.find(filter)
         .populate("assignee", "_id name role")
         .populate("userEstimatedTime.user", "_id name role")
@@ -354,7 +357,7 @@ export default class TaskController {
         const users = await User.find({ company }, "_id");
         assigneeIds = users.map((u) => u._id.toString());
       }
-
+      console.log("assigneeIds", assignees, company, assigneeIds)
       // Fetch tasks
       const taskAmount = await Task.find({
         company: new mongoose.Types.ObjectId(company),
@@ -365,7 +368,14 @@ export default class TaskController {
             status: { $nin: ["cancel", "completed"] },
           },
         },
-      });
+      }).populate("assignee", "_id name role").populate("userEstimatedTime.user", "_id name role")
+        .populate("status.user", "_id name role")
+        .populate("dueDate.user", "_id name role")
+        .populate("startDate.user", "_id name role")
+        .populate("endDate.user", "_id name role")
+        .populate("createdBy", "_id name role")
+
+
       console.log("taskAmount", JSON.stringify(taskAmount));
       return res.status(200).json({ taskAmount });
     } catch (error: any) {
@@ -380,46 +390,145 @@ export default class TaskController {
   async getTaskById(req: AuthRequest, res: Response) {
     try {
       const user: any = req.user;
-      const {
-        limit = "10",
-        skip = "0",
-        status,
-        search,
-        taskDate,
-        priority,
-      } = req.query as {
-        limit?: string;
-        skip?: string;
-        status?: string;
-        search?: string;
-        taskDate?: string;
-        priority?: string;
-      };
-
       if (!user?.sub) {
         return res.status(400).json({ message: "User ID is required" });
       }
-      console.log("staus", status);
-      // Step 1: Build base query
-      const query: any = {
+      const normalize = (val: any) =>
+        val && val !== "null" && val !== "undefined" && val !== "" ? val : null;
+
+      // ✅ Extract + normalize query params
+      const {
+        status,
+        priority,
+        company,
+        tags,
+        search,
+        limit = "100",
+        skip = "0",
+        sortBy = "createdAt",
+        order = "desc",
+        dateRange,
+        entryDoneRange,
+        noOfEntryRange,
+        individualBucket,
+      } = req.query as any;
+      const _status = normalize(status);
+      const _priority = normalize(priority);
+      const _createdBy = normalize(user.role === "admin" ? "" : user?.sub);
+      const _tags = normalize(tags);
+      const _company = normalize(company);
+      const _search = normalize(search);
+      const _dateRange = normalize(dateRange);
+      const _entryDoneRange = normalize(entryDoneRange);
+      const _noOfEntryRange = normalize(noOfEntryRange);
+      const _individualBucket = normalize(individualBucket);
+
+      const filter: any = {
         assignee: { $in: [user.sub] },
-        status: {
-          $elemMatch: {
-            status: status ? { $eq: status } : { $ne: "cancel" }
-          },
-        },
       };
-      if (priority) query.priority = priority;
-      if (taskDate) query.taskDate = new Date(taskDate);
-      if (search) {
-        query.$or = [
-          { taskTitle: { $regex: search, $options: "i" } },
-          { taskDescription: { $regex: search, $options: "i" } },
+      const localTimeZone = DateTime.local().zoneName;
+      console.log("daterange", JSON.stringify(dateRange, null, 2), JSON.stringify(_dateRange, null, 2));
+      // ✅ Multi-value fields
+      if (_status) {
+        filter.status = {
+          $elemMatch: {
+            user: user.sub,
+            status: { $in: _status.split(",").map((s: string) => s.trim().toLowerCase()) },
+          },
+        };
+      }
+
+      if (_priority) {
+        filter.priority = {
+          $in: _priority.split(",").map((p: any) => p.trim().toLowerCase()),
+        };
+      }
+
+
+      if (_createdBy) {
+        const createdByArray = Array.isArray(_createdBy)
+          ? _createdBy
+          : String(_createdBy)
+            .split(",")
+            .map((c) => c.trim())
+            .filter((c) => c);
+
+        filter.createdBy = { $in: createdByArray };
+      }
+      if (_tags) {
+        filter.tags = { $in: _tags.split(",").map((t: any) => t.trim()) };
+      }
+      if (_company) {
+        filter.company = user?.sub;
+      }
+
+      // ✅ Text search
+      if (_search) {
+        filter.$or = [
+          { taskTitle: { $regex: _search, $options: "i" } },
+          { taskDescription: { $regex: _search, $options: "i" } },
         ];
       }
 
+      // ✅ Date range
+      if (_dateRange) {
+        const [start, end] = _dateRange.split(",");
+        if (start && end) {
+          const startDt = DateTime.fromISO(start).setZone(localTimeZone).startOf('day');
+          const endDt = DateTime.fromISO(end).setZone(localTimeZone).endOf('day');
+          const startDate = startDt.toJSDate();
+          const endDate = endDt.toJSDate();
+
+          filter.$or = [
+            { taskDate: { $gte: startDate, $lte: endDate } },
+            {
+              "dueDate.date": {
+                $elemMatch: { $gte: startDate, $lte: endDate },
+              },
+            },
+            { "startDate.date": { $gte: startDate, $lte: endDate } },
+            { "endDate.date": { $gte: startDate, $lte: endDate } },
+          ];
+        }
+      }
+
+      // ✅ Entry ranges
+      if (_entryDoneRange) {
+        const [min, max] = _entryDoneRange.split(",").map(Number);
+        if (!isNaN(min) && !isNaN(max)) {
+          filter.entryDone = { $gte: min, $lte: max };
+        }
+      }
+      if (_noOfEntryRange) {
+        const [min, max] = _noOfEntryRange.split(",").map(Number);
+        if (!isNaN(min) && !isNaN(max)) {
+          filter.noOfEntry = { $gte: min, $lte: max };
+        }
+      }
+
+      if (_individualBucket !== null) {
+        filter.individualBucket = {
+          $elemMatch: {
+            user: { $in: user.sub },
+            individual: _individualBucket === "true",
+          },
+        };
+      } else if (_individualBucket !== null) {
+        filter["individualBucket.individual"] = _individualBucket === "true";
+      } else {
+        filter["individualBucket.individual"] = false;
+      }
+
+      // ✅ Sorting
+      const sort: any = {};
+      sort[sortBy] = order === "asc" ? 1 : -1;
+
+      // ✅ Query DB
+      console.log("filter", JSON.stringify(filter));
+
+
       // Step 2: Find and populate
-      const tasks = await Task.find(query)
+      const tasks = await Task.find(filter)
         .populate("assignee", "_id name role")
         .populate("userEstimatedTime.user", "_id name role")
         .populate("status.user", "_id name role")
@@ -430,6 +539,7 @@ export default class TaskController {
         .populate("company", "_id name role")
         .populate("statusHistory.changedBy", "_id name role")
         .lean();
+      console.log(tasks, "task")
       // Step 3: Apply per-user transformation
       const transformedTasks = await this.transformTaskData(tasks, user?.sub);
 
@@ -935,7 +1045,21 @@ export default class TaskController {
         };
       }
 
-      const tasks = await Task.find(query);
+      const tasks = await Task.find(query).populate("assignee", "_id name role")
+        .populate("userEstimatedTime.user", "_id name role")
+        .populate("status.user", "_id name role")
+        .populate("dueDate.user", "_id name role")
+        .populate("startDate.user", "_id name role")
+        .populate("endDate.user", "_id name role")
+        .populate("createdBy", "_id name role")
+        .populate("company", "_id name role")
+        .populate("individualBucket.user", "_id name role")
+        .populate("evaluation.user", "_id name role")
+        .populate("statusHistory.changedBy", "_id name role")
+        .populate("comments.createdBy", "_id name role")
+        .populate("time_spent.user", "_id name role")
+        .populate("Accept.user", "_id name role")
+        .populate("actionEvents.user", "_id name role");
 
       return res.status(200).json({
         message: "Individual bucket tasks fetched successfully",
@@ -1267,6 +1391,116 @@ export default class TaskController {
     }
   }
 
+  // get contact person
+  async getContactPerson(req: Request, res: Response) {
+    try {
+      const { task } = req.query;
+
+      if (!task || !mongoose.Types.ObjectId.isValid(task as string)) {
+        return res.status(400).json({ message: "Invalid or missing task ID" });
+      }
+
+      const taskDoc = await Task.findById(task).select("contactPerson");
+
+      if (!taskDoc) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+
+      return res.status(200).json({ contactPerson: taskDoc.contactPerson });
+    } catch (error: any) {
+      console.error("Error fetching contact person:", error.message);
+      return res.status(500).json({ message: "Server error", error: error.message });
+    }
+  }
+
+  //add contact person
+  async addContactPerson(req: Request, res: Response) {
+    try {
+      const { name, phone, task }: any = req.body;
+      console.log("body", req.body)
+      if (!task || !mongoose.Types.ObjectId.isValid(task as string)) {
+        return res.status(400).json({ message: "Invalid or missing task ID" });
+      }
+
+      if (!name || !phone) {
+        return res.status(400).json({ message: "Name and phone are required" });
+      }
+
+      const updatedTask = await Task.findByIdAndUpdate(
+        task,
+        { $push: { contactPerson: { name, phone } } },
+        { new: true }
+      ).select("contactPerson");
+      console.log("updateTask", updatedTask)
+      if (!updatedTask) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+
+      return res.status(200).json({ contactPerson: updatedTask.contactPerson });
+    } catch (error: any) {
+      console.error("Error adding contact person:", error.message);
+      return res.status(500).json({ message: "Server error", error: error.message });
+    }
+  }
+  // update contact person
+  async updateContactPerson(req: Request, res: Response) {
+    try {
+      const { name, phone, task, index }: any = req.body;
+
+      if (!task || !mongoose.Types.ObjectId.isValid(task as string)) {
+        return res.status(400).json({ message: "Invalid or missing task ID" });
+      }
+      const taskDoc = await Task.findById(task);
+
+      if (!taskDoc) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+
+      const idx = parseInt(index);
+      if (idx < 0 || idx >= taskDoc.contactPerson.length) {
+        return res.status(400).json({ message: "Index out of bounds" });
+      }
+
+      if (name) taskDoc.contactPerson[idx].name = name;
+      if (phone) taskDoc.contactPerson[idx].phone = phone;
+
+      await taskDoc.save();
+
+      return res.status(200).json({ contactPerson: taskDoc.contactPerson });
+    } catch (error: any) {
+      console.error("Error updating contact person:", error.message);
+      return res.status(500).json({ message: "Server error", error: error.message });
+    }
+  }
+  // delete contact person
+  async removeContactPerson(req: Request, res: Response) {
+    try {
+      const { task, index } = req.body;
+      console.log("task", task, index, typeof index)
+      if (!task) {
+        return res.status(400).json({ message: "Invalid or missing task ID" });
+      }
+      const idx = parseInt(index);
+
+      const taskDoc = await Task.findById(task);
+
+      if (!taskDoc) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+
+      if (idx < 0 || idx >= taskDoc.contactPerson.length) {
+        return res.status(400).json({ message: "Index out of bounds" });
+      }
+
+      taskDoc.contactPerson.splice(idx, 1);
+      await taskDoc.save();
+      console.log("taskDoc", taskDoc)
+      return res.status(200).json({ contactPerson: taskDoc.contactPerson });
+    } catch (error: any) {
+      console.error("Error removing contact person:", error.message);
+      return res.status(500).json({ message: "Server error", error: error.message });
+    }
+  }
   // ✅ Utility: Get local timezone
   private async getLocalTimeZone(): Promise<string> {
     return Intl.DateTimeFormat().resolvedOptions().timeZone;

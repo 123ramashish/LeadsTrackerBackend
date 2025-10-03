@@ -245,6 +245,27 @@ const TaskSchema = new Schema(
       ref: "RepeatingTask",
     },
     actionEvents: [ActionEventSchema],
+    // Inside your TaskSchema definition
+
+    contactPerson: [{
+      name: {
+        type: String,
+        required: [true, "Name is required"],
+        trim: true,
+        minlength: [2, "Name must be at least 2 characters long"],
+        maxlength: [50, "Name cannot exceed 50 characters"]
+      },
+      phone: {
+        type: Number,
+        required: [true, "Phone number is required"],
+        validate: {
+          validator: function (value: number) {
+            return /^[0-9]{10}$/.test(value.toString());
+          },
+          message: (props: any) => `${props.value} is not a valid 10-digit phone number!`
+        }
+      }
+    }]
   },
   {
     timestamps: true, // Adds createdAt and updatedAt
