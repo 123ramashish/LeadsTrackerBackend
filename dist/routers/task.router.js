@@ -25,5 +25,9 @@ taskRouter.put("/bucketShift", auth_middleware_1.authenticate, taskController.bu
 taskRouter.put("/estimatedTime", auth_middleware_1.authenticate, taskController.estimatedTimeUpdate);
 taskRouter.put("/tags", auth_middleware_1.authenticate, taskController.updateTags);
 taskRouter.put("/pickTask", auth_middleware_1.authenticate, taskController.pickTask);
+taskRouter.get("/contactPerson", auth_middleware_1.authenticate, taskController.getContactPerson);
+taskRouter.post("/contactPerson", auth_middleware_1.authenticate, taskController.addContactPerson);
+taskRouter.patch("/contactPerson", auth_middleware_1.authenticate, taskController.updateContactPerson);
+taskRouter.delete("/contactPerson", auth_middleware_1.authenticate, taskController.removeContactPerson);
 // taskRouter.delete("/:id",  taskController.deleteTask);
 exports.default = taskRouter;
