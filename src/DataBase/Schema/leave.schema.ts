@@ -17,6 +17,8 @@ const leaveSchema = new mongoose.Schema({
     type: Date,
     required: true,
   },
+  startTime: String,
+  endTime: String,
   leaveType: {
     type: String,
     required: true,
@@ -29,9 +31,9 @@ const leaveSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  file: [String],
   status: {
     type: String,
-    enum: ["Pending", "Approved", "Rejected"],
     default: "Pending",
   },
   company: {
@@ -49,5 +51,5 @@ const leaveSchema = new mongoose.Schema({
       message: String,
     },
   ],
-},{timestamps:true});
+}, { timestamps: true });
 export default mongoose.models.Leave || mongoose.model("Leave", leaveSchema);

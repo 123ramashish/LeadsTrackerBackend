@@ -15,13 +15,13 @@ export default class DashboardController {
   static async getDashboardData(req: AuthRequest, res: Response) {
     const user: any = req.user
     try {
-      if (user?.role !== "admin" || user?.role !== "manager" || user?.role !== "teamLeader") {
+
+      if (user?.role !== "admin") {
         return res.status(403).json({ message: "Forbidden" });
       }
+
       const {
-        assignee = [],
-        estimatedValue,
-        estimatedUnit,
+        assignee,
         priority,
         status,
         startDate,
@@ -49,11 +49,6 @@ export default class DashboardController {
         match.assignee = { $in: assignee.map((id: any) => new mongoose.Types.ObjectId(id)) };
       }
 
-      // Estimated time filter
-      if (estimatedValue && estimatedUnit) {
-        match["estimatedTime.value"] = Number(estimatedValue);
-        match["estimatedTime.unit"] = estimatedUnit;
-      }
 
       // Priority filter
       if (priority) {
@@ -94,13 +89,12 @@ export default class DashboardController {
       if (hasAccept === "true") {
         match["Accept.status"] = true;
       }
-
+      console.log("match", match)
       // Aggregation pipeline
       const tasks = await Task.aggregate([
         { $match: match },
         { $sort: { [sortField as string]: sortOrder === "asc" ? 1 : -1 } }
       ]);
-
       return res.json({ success: true, data: tasks });
     } catch (error: any) {
       console.error("Error fetching dashboard data:", error.message);

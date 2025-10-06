@@ -44,9 +44,12 @@ export default class LeaveController {
         leaveType?: string;
         startDate?: string;
         endDate?: string;
+        startTime?: string;
+        endTime?: string;
         reason?: string;
+        file?: string;
+
       };
-      console.log("body", req.body);
       if (!body.leaveType || !body.startDate || !body.endDate) {
         return res
           .status(400)
@@ -61,6 +64,10 @@ export default class LeaveController {
         status: "Pending",
         startDate: toZonedDate(body.startDate),
         endDate: toZonedDate(body.endDate),
+        startTime: body.startTime,
+        endTime: body.endTime,
+        file: body.file,
+        createAt: DateTime.now().setZone(localTimeZone).toJSDate(),
         user: user.sub,
         company: user?.company,
       });
@@ -128,49 +135,121 @@ export default class LeaveController {
 
   static async getLeaves(req: AuthRequest, res: Response) {
     try {
+      console.log("api call")
       const { user } = req;
       if (!user || !user.sub) {
-        return res
-          .status(401)
-          .json({ message: "User authentication required" });
+        return res.status(401).json({ message: "User authentication required" });
       }
 
-      const statusFilter = (req.query.status as string) ?? undefined;
-      const searchQuery = (req.query.search as string) ?? undefined;
-      const users = req.query.users 
+      const {
+        search,
+        status,
+        users,
+        startDate,
+        endDate,
+        startTime,
+        endTime,
+      } = req.query;
 
-      const query: any = {};
+      const query: any = { company: user?.company };
+      console.log("api call2", users, startDate, endDate, startTime, endTime)
+
+      // 🔹 User filtering
       if (user.role === "staff") {
         query.user = user.sub;
-      } else {
-        query.user = users
-      }
-      console.log("user", users,statusFilter)
-      if (statusFilter && statusFilter !== "All") {
-        query.status = statusFilter;
+      } else if (users) {
+        if (Array.isArray(users)) {
+          query.user = { $in: users };
+        } else if (typeof users === "string") {
+          const userList = users
+            .split(",")
+            .map(u => u.trim())
+            .filter(Boolean);
+          query.user = userList.length > 1 ? { $in: userList } : userList[0];
+        }
       }
 
-      if (typeof searchQuery !== "undefined") {
-        query.leaveType = { $regex: searchQuery, $options: "i" };
+      // 🔹 Status filter
+      if (status) query.status = status;
+
+      // 🔹 Search filter
+      if (search) {
+        query.$or = [
+          { leaveType: { $regex: search, $options: "i" } },
+          { reason: { $regex: search, $options: "i" } }
+        ];
       }
 
-      query.$or = [{ roster: { $ne: true } }, { roster: { $exists: false } }];
+      // Helper to safely convert date
+      const safeDate = (isoDate: any, isEnd = false) => {
+        if (!isoDate || typeof isoDate !== "string") return null;
+        const dt = DateTime.fromISO(isoDate, { zone: localTimeZone });
+        if (!dt.isValid) return null;
+        return isEnd ? dt.endOf("day").toUTC().toJSDate() : dt.startOf("day").toUTC().toJSDate();
+      };
+
+      const start = safeDate(startDate);
+      const end = safeDate(endDate, true);
+
+      // 🔹 Date range filter (only if valid)
+      if (startDate !== 'undefined' && startDate && endDate && endDate !== "undefined") {
+        query.$and = [
+          ...(query.$and || []),
+          {
+            $or: [
+              { startDate: { $gte: start, $lte: end } },
+              { endDate: { $gte: start, $lte: end } },
+              {
+                $and: [
+                  { startDate: { $lte: start } },
+                  { endDate: { $gte: end } }
+                ]
+              }
+            ]
+          }
+        ];
+      } else if (startDate !== "undefined" && startDate) {
+        query.startDate = { $gte: start };
+      } else if (endDate !== "undefined" && endDate) {
+        query.endDate = { $lte: end };
+      }
+
+      // 🔹 Time filter (for same-day leaves)
+      if (startTime !== "undefined" && startTime && endTime !== "undefined" && endTime) {
+        query.$and = [
+          ...(query.$and || []),
+          { startTime: { $exists: true } },
+          { endTime: { $exists: true } },
+          {
+            $expr: {
+              $and: [
+                { $gte: ["$startTime", startTime] },
+                { $lte: ["$endTime", endTime] }
+              ]
+            }
+          }
+        ];
+      }
+
+
+      console.log("query", query)
 
       const leaves = await leaveSchema
         .find(query)
         .populate([{ path: "user", model: User }])
         .populate([{ path: "remarks.createdBy", model: User }])
-        .sort({ createAt: -1 })
+        .sort({ createdAt: -1 })
         .lean();
 
       return res.status(200).json({
-        message: "Leave fetched successfully",
-        data: leaves,
+        message: "Leaves fetched successfully",
+        data: leaves
       });
     } catch (error: any) {
+      console.error("Error fetching leaves:", error);
       return res
         .status(500)
-        .json({ message: error?.message || "Failed to fetch leaves" });
+        .json({ message: error.message || "Failed to fetch leaves" });
     }
   }
 

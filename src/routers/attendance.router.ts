@@ -14,7 +14,7 @@ attendanceRouter.get("/", authenticate, AttendanceController.getAttendance);
 // Use memory storage so we can forward buffers to ImageKit
 const upload = multer({ storage: multer.memoryStorage() });
 
-// JSON routes
+// JSON routes 
 attendanceRouter.post("/leave", authenticate, LeaveController.createLeave);
 attendanceRouter.get("/leave", authenticate, LeaveController.getLeaves);
 attendanceRouter.put("/leave", authenticate, LeaveController.updateLeave);
