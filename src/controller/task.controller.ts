@@ -6,6 +6,7 @@ import User from "../DataBase/Schema/user.schema";
 import { Notification_Create } from "../utils/notificationUtils";
 import { sendPushNotification } from "../helper/notifications";
 import Notification from "../DataBase/Schema/notification.schema";
+import { stat } from "fs";
 interface AuthRequest extends Request {
   user?: {
     sub: string;
@@ -393,10 +394,14 @@ export default class TaskController {
       if (!user?.sub) {
         return res.status(400).json({ message: "User ID is required" });
       }
-      const normalize = (val: any) =>
-        val && val !== "null" && val !== "undefined" && val !== "" ? val : null;
 
-      // ✅ Extract + normalize query params
+      const safeNormalize = (val: any) => {
+        if (!val || val === "null" || val === "undefined" || val === "[object Object]" || val === "") {
+          return null;
+        }
+        return val;
+      };
+
       const {
         status,
         priority,
@@ -412,122 +417,123 @@ export default class TaskController {
         noOfEntryRange,
         individualBucket,
       } = req.query as any;
-      const _status = normalize(status);
-      const _priority = normalize(priority);
-      const _createdBy = normalize(user.role === "admin" ? "" : user?.sub);
-      const _tags = normalize(tags);
-      const _company = normalize(company);
-      const _search = normalize(search);
-      const _dateRange = normalize(dateRange);
-      const _entryDoneRange = normalize(entryDoneRange);
-      const _noOfEntryRange = normalize(noOfEntryRange);
-      const _individualBucket = normalize(individualBucket);
+
+      const _status = safeNormalize(status);
+      const _priority = safeNormalize(priority);
+      const _createdBy = user.role === "admin" ? null : safeNormalize(user?.sub);
+      const _tags = safeNormalize(tags);
+      const _company = safeNormalize(company);
+      const _search = safeNormalize(search);
+      const _dateRange = safeNormalize(dateRange);
+      const _entryDoneRange = safeNormalize(entryDoneRange);
+      const _noOfEntryRange = safeNormalize(noOfEntryRange);
+      const _individualBucket = safeNormalize(individualBucket);
 
       const filter: any = {
         assignee: { $in: [user.sub] },
       };
       const localTimeZone = DateTime.local().zoneName;
-      console.log("daterange", JSON.stringify(dateRange, null, 2), JSON.stringify(_dateRange, null, 2));
-      // ✅ Multi-value fields
+
+      //  Fix: status filter should match array elements where both user and status match
+      let statusList: string[] = [];
       if (_status) {
+        statusList = _status.split(",").map((s: string) => s.trim().toLowerCase());
+
         filter.status = {
           $elemMatch: {
-            user: user.sub,
-            status: { $in: _status.split(",").map((s: string) => s.trim().toLowerCase()) },
+            user: new mongoose.Types.ObjectId(user.sub),
+            status: { $in: statusList },
           },
         };
+      } else {
+        filter.status = { $elemMatch: { user: new mongoose.Types.ObjectId(user.sub) } };
       }
 
+
+      //  Priority filter
       if (_priority) {
-        filter.priority = {
-          $in: _priority.split(",").map((p: any) => p.trim().toLowerCase()),
-        };
+        const priorityList = _priority.split(",").map((p: string) => p.trim().toLowerCase());
+        filter.priority = { $in: priorityList };
       }
 
-
+      //  CreatedBy
       if (_createdBy) {
-        const createdByArray = Array.isArray(_createdBy)
-          ? _createdBy
-          : String(_createdBy)
-            .split(",")
-            .map((c) => c.trim())
-            .filter((c) => c);
-
-        filter.createdBy = { $in: createdByArray };
+        filter.createdBy = { $in: Array.isArray(_createdBy) ? _createdBy : [_createdBy] };
       }
+
+      //  Tags
       if (_tags) {
-        filter.tags = { $in: _tags.split(",").map((t: any) => t.trim()) };
+        filter.tags = { $in: _tags.split(",").map((t: string) => t.trim()).filter(Boolean) };
       }
+
+      //  Company
       if (_company) {
-        filter.company = user?.sub;
+        filter.company = user?.company;
       }
 
-      // ✅ Text search
+      //  Text search
+      const orConditions: any[] = [];
       if (_search) {
-        filter.$or = [
+        orConditions.push(
           { taskTitle: { $regex: _search, $options: "i" } },
-          { taskDescription: { $regex: _search, $options: "i" } },
-        ];
+          { taskDescription: { $regex: _search, $options: "i" } }
+        );
       }
 
-      // ✅ Date range
+      //  Date range
       if (_dateRange) {
         const [start, end] = _dateRange.split(",");
         if (start && end) {
-          const startDt = DateTime.fromISO(start).setZone(localTimeZone).startOf('day');
-          const endDt = DateTime.fromISO(end).setZone(localTimeZone).endOf('day');
+          const startDt = DateTime.fromISO(start).setZone(localTimeZone).startOf("day");
+          const endDt = DateTime.fromISO(end).setZone(localTimeZone).endOf("day");
           const startDate = startDt.toJSDate();
           const endDate = endDt.toJSDate();
 
-          filter.$or = [
+          orConditions.push(
             { taskDate: { $gte: startDate, $lte: endDate } },
-            {
-              "dueDate.date": {
-                $elemMatch: { $gte: startDate, $lte: endDate },
-              },
-            },
+            { "dueDate.date": { $elemMatch: { $gte: startDate, $lte: endDate } } },
             { "startDate.date": { $gte: startDate, $lte: endDate } },
-            { "endDate.date": { $gte: startDate, $lte: endDate } },
-          ];
+            { "endDate.date": { $gte: startDate, $lte: endDate } }
+          );
         }
       }
 
-      // ✅ Entry ranges
+      if (orConditions.length > 0) {
+        filter.$or = orConditions;
+      }
+
+      //  Numeric Ranges
+      const andConditions: any[] = [];
+
       if (_entryDoneRange) {
         const [min, max] = _entryDoneRange.split(",").map(Number);
         if (!isNaN(min) && !isNaN(max)) {
-          filter.entryDone = { $gte: min, $lte: max };
+          andConditions.push({ entryDone: { $gte: min, $lte: max } });
         }
       }
+
       if (_noOfEntryRange) {
         const [min, max] = _noOfEntryRange.split(",").map(Number);
         if (!isNaN(min) && !isNaN(max)) {
-          filter.noOfEntry = { $gte: min, $lte: max };
+          andConditions.push({ noOfEntry: { $gte: min, $lte: max } });
         }
       }
 
-      if (_individualBucket !== null) {
-        filter.individualBucket = {
-          $elemMatch: {
-            user: { $in: user.sub },
-            individual: _individualBucket === "true",
-          },
-        };
-      } else if (_individualBucket !== null) {
-        filter["individualBucket.individual"] = _individualBucket === "true";
-      } else {
-        filter["individualBucket.individual"] = false;
+      if (andConditions.length > 0) {
+        filter.$and = andConditions;
       }
 
-      // ✅ Sorting
-      const sort: any = {};
-      sort[sortBy] = order === "asc" ? 1 : -1;
+      //  Individual bucket logic
+      if (_individualBucket !== null) {
+        const isIndividual = _individualBucket === "true";
+        filter.individualBucket = {
+          $elemMatch: { user: user.sub, individual: isIndividual },
+        };
+      }
 
-      // ✅ Query DB
-      console.log("filter", JSON.stringify(filter));
-
-
-      // Step 2: Find and populate
+      //  Sorting
+      const sort: any = { [sortBy]: order === "asc" ? 1 : -1 };
+      //  DB Query
       const tasks = await Task.find(filter)
         .populate("assignee", "_id name role")
         .populate("userEstimatedTime.user", "_id name role")
@@ -539,30 +545,23 @@ export default class TaskController {
         .populate("company", "_id name role")
         .populate("statusHistory.changedBy", "_id name role")
         .lean();
-      console.log(tasks, "task")
-      // Step 3: Apply per-user transformation
       const transformedTasks = await this.transformTaskData(tasks, user?.sub);
-
-      // Step 4: Process status per user
       const statusOrder: Record<string, number> = {
-        expired: 1,
+        assignee: 1,
         "in progress": 2,
         pause: 3,
-        assignee: 4,
+        expired: 4,
         completed: 5,
         cancel: 6,
       };
 
       const userTasks = transformedTasks
         .map((task: any) => {
-          const currentStatus =
-            task.status?.status?.toLowerCase() ?? "assignee";
-          const sortValue: any = statusOrder[currentStatus] ?? 99;
+          const currentStatus = task.status[0]?.status ?? "assignee";
+          const sortValue = statusOrder[currentStatus] ?? 99;
           return { ...task, userStatus: currentStatus, sortValue };
         })
-        .filter((task: any) => !status || task.userStatus === status);
-
-      // Step 5: Sort & paginate
+        .filter((task: any) => !_status || statusList.includes(task.userStatus));
       const sortedTasks = userTasks
         .sort((a: any, b: any) => a.sortValue - b.sortValue)
         .slice(parseInt(skip), parseInt(skip) + parseInt(limit));
@@ -572,11 +571,10 @@ export default class TaskController {
       });
     } catch (error: any) {
       console.error("Error getting tasks by user ID:", error);
-      return res
-        .status(500)
-        .json({ message: "Internal Server Error", error: error.message });
+      return res.status(500).json({ message: "Internal Server Error", error: error.message });
     }
   }
+
 
   async updateTaskStatus(req: AuthRequest, res: Response) {
     try {
