@@ -354,4 +354,79 @@ export default class LeaveController {
       return res.status(500).json({ message: error?.message });
     }
   }
+  static async uploadReport(req: AuthRequest, res: Response) {
+    try {
+      const { user } = req;
+      if (!user || !user.sub) {
+        return res.status(401).json({ message: "User authentication required" });
+      }
+
+      const files = (req as any).files as Express.Multer.File[] | undefined;
+
+      if (!files || files.length === 0) {
+        return res.status(400).json({ message: "No files uploaded" });
+      }
+
+      // Verify ImageKit configuration
+      if (!process.env.IMAGEKIT_PRIVATE_KEY || !process.env.IMAGEKIT_PUBLIC_KEY) {
+        console.error("ImageKit credentials missing");
+        return res.status(500).json({ message: "Storage service configuration error" });
+      }
+
+      const uploadResults = await Promise.all(
+        files.map(async (file) => {
+          try {
+            const result = await imagekit.upload({
+              file: file.buffer,
+              fileName: `report_${Date.now()}_${file.originalname}`,
+              folder: "/Report",
+              useUniqueFileName: true,
+            });
+
+            return {
+              name: file.originalname,
+              url: result.url,
+              fileId: result.fileId,
+              success: true
+            };
+          } catch (uploadError: any) {
+            console.error(`Upload failed for ${file.originalname}:`, uploadError);
+            return {
+              name: file.originalname,
+              error: uploadError.message,
+              success: false
+            };
+          }
+        })
+      );
+
+      const failedUploads = uploadResults.filter(result => !result.success);
+      if (failedUploads.length > 0) {
+        return res.status(207).json({
+          message: "Some files failed to upload",
+          uploaded: uploadResults.filter(result => result.success),
+          failed: failedUploads
+        });
+      }
+
+      return res.status(200).json({
+        message: "Files uploaded successfully",
+        uploaded: uploadResults,
+      });
+    } catch (error: any) {
+      console.error("Upload error:", error);
+
+      // More specific error messages
+      if (error.message?.includes('authorization') || error.message?.includes('403')) {
+        return res.status(500).json({
+          message: "Storage service authentication failed. Please check configuration."
+        });
+      }
+
+      return res.status(500).json({
+        message: error?.message || "Server error during file upload"
+      });
+    }
+  }
+
 }

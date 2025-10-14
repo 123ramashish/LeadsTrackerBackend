@@ -28,5 +28,8 @@ attendanceRouter.options("/leave", authenticate, LeaveController.getLeaveFiles);
 // Comment with optional image
 attendanceRouter.patch("/leave", authenticate, upload.any(), LeaveController.commentLeave);
 
+// upload report 
+attendanceRouter.post("/report", authenticate, upload.any(), LeaveController.uploadReport);
+
 
 export default attendanceRouter;
