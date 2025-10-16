@@ -46,6 +46,7 @@ taskRouter.get("/contactPerson", authenticate, taskController.getContactPerson);
 taskRouter.post("/contactPerson", authenticate, taskController.addContactPerson);
 taskRouter.patch("/contactPerson", authenticate, taskController.updateContactPerson);
 taskRouter.delete("/contactPerson", authenticate, taskController.removeContactPerson);
+taskRouter.get("/reports", authenticate, taskController.getReport);
 
 // taskRouter.delete("/:id",  taskController.deleteTask);
 
