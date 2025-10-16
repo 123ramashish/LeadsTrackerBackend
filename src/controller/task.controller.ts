@@ -16,7 +16,7 @@ interface AuthRequest extends Request {
   };
 }
 export default class TaskController {
-  // ✅ Create Task
+  //  Create Task
   async createTask(req: AuthRequest, res: Response) {
     try {
       const user = req.user;
@@ -173,7 +173,7 @@ export default class TaskController {
       const normalize = (val: any) =>
         val && val !== "null" && val !== "undefined" && val !== "" ? val : null;
 
-      // ✅ Extract + normalize query params
+      //  Extract + normalize query params
       const {
         status,
         priority,
@@ -182,7 +182,7 @@ export default class TaskController {
         company,
         tags,
         search,
-        limit = "100",
+        limit = "5",
         skip = "0",
         sortBy = "createdAt",
         order = "desc",
@@ -323,7 +323,7 @@ export default class TaskController {
         .limit(parseInt(limit));
 
       const total = await Task.countDocuments(filter);
-
+console.log("tasks", JSON.stringify(tasks, null, 2));
       return res.status(200).json({ total, count: tasks.length, tasks });
     } catch (error: any) {
       console.error("Error getting tasks:", error.message);
@@ -781,7 +781,7 @@ export default class TaskController {
     }
   }
 
-  // ✅ Add a new comment to a task
+  //  Add a new comment to a task
   async addTaskMessage(req: Request, res: Response) {
     try {
       const { message, files, address, taskId, company, userId } = req.body;
@@ -1499,7 +1499,195 @@ export default class TaskController {
       return res.status(500).json({ message: "Server error", error: error.message });
     }
   }
-  // ✅ Utility: Get local timezone
+async getReport(req: AuthRequest, res: Response) {
+  try {
+    const user: any = req.user;
+    const normalize = (val: any) =>
+      val && val !== "null" && val !== "undefined" && val !== "" ? val : null;
+
+    // Extract + normalize query params
+    const {
+      assignee,
+      company,
+      dateRange,
+      individualBucket,
+    } = req.query as any;
+    
+    // const _assignee = normalize(assignee);
+    // const _company = normalize(company);
+    // const _dateRange = normalize(dateRange);
+    // const _individualBucket = normalize(individualBucket);
+
+    const filter: any = {};
+    const localTimeZone = DateTime.local().zoneName;
+
+    // Company filter
+    
+    filter.company = new mongoose.Types.ObjectId(company || user.company);
+
+
+if (assignee) {
+  const assigneeIds = assignee
+    .split(",")
+    .map((id: string) => id.trim());
+
+  // Match tasks where assignee array contains any of the given IDs
+  filter.assignee = { $in: assigneeIds };
+} else {
+  const users = await User.find({
+    company: new mongoose.Types.ObjectId(user.company),
+  });
+
+  if (users.length === 0) {
+    return res
+      .status(400)
+      .json({ message: "No users available to assign the task" });
+  }
+
+  filter.assignee = {
+    $in: users.map((u) => u._id.toString()),
+  };
+}
+
+
+    // Date range filter
+if (dateRange) {
+  const [start, end] = dateRange.split(",");
+  if (start && end) {
+    const startDt = DateTime.fromISO(start).setZone(localTimeZone).startOf("day");
+    const endDt = DateTime.fromISO(end).setZone(localTimeZone).endOf("day");
+    const startDateUTC = startDt.toUTC().toJSDate();
+    const endDateUTC = endDt.toUTC().toJSDate();
+
+    filter.$or = [
+      { taskDate: { $gte: startDateUTC, $lte: endDateUTC } },
+      { "dueDate.date": { $gte: startDateUTC, $lte: endDateUTC } },
+      { "startDate.date": { $gte: startDateUTC, $lte: endDateUTC } },
+      { "endDate.date": { $gte: startDateUTC, $lte: endDateUTC } },
+    ];
+  }
+}
+
+
+    // Individual bucket filter - FIXED LOGIC
+   if (individualBucket !== null && assignee) {
+        filter.individualBucket = {
+          $elemMatch: {
+            user: { $in: assignee },
+            individual: individualBucket === "true",
+          },
+        };
+      } else if (individualBucket !== null) {
+        filter["individualBucket.individual"] = individualBucket === "true";
+      } else {
+        filter["individualBucket.individual"] = false;
+      }
+
+
+    // console.log("Final query filter:", JSON.stringify(filter, null, 2));
+    
+    // Query DB with the fixed filter
+    const tasks = await Task.find(filter)
+      .populate("assignee", "_id name role email")
+      .populate("userEstimatedTime.user", "_id name role")
+      .populate("status.user", "_id name role")
+      .populate("dueDate.user", "_id name role")
+      .populate("startDate.user", "_id name role")
+      .populate("endDate.user", "_id name role")
+      .populate("createdBy", "_id name role")
+      .populate("company", "_id name role")
+      .populate("individualBucket.user", "_id name role")
+      .populate("evaluation.user", "_id name role")
+      .populate("statusHistory.changedBy", "_id name role")
+      .populate("comments.createdBy", "_id name role")
+      .populate("time_spent.user", "_id name role")
+      .populate("Accept.user", "_id name role")
+      .populate("actionEvents.user", "_id name role")
+      .lean();
+
+    // Transform data for better response
+    const transformedTasks = tasks.map(task => ({
+      id: task._id,
+      title: task.taskTitle,
+      description: task.taskDescription,
+      assignee: task.assignee,
+      status: task.status,
+      priority: task.priority,
+      taskDate: task.taskDate,
+      dueDate: task.dueDate,
+      startDate: task.startDate,
+      endDate: task.endDate,
+      entryDone: task.entryDone || 0,
+      noOfEntry: task.noOfEntry || 0,
+      estimatedTime: task.userEstimatedTime,
+      timeSpent: task.time_spent,
+      tags: task.tags || [],
+      company: task.company,
+      individualBucket: task.individualBucket,
+      createdAt: task.createdAt,
+      updatedAt: task.updatedAt
+    }));
+     const groupTasksByAssignee = (tasks: any[]) => {
+      const usersMap = new Map();
+      
+      tasks.forEach((task: any) => {
+        // Since assignee is an array, loop through all assignees
+        task.assignee.forEach((assignee: any) => {
+          const userId = assignee._id.toString();
+          
+          if (!usersMap.has(userId)) {
+            usersMap.set(userId, {
+              user: assignee,
+              tasks: []
+            });
+          }
+          
+          // Add the task to this user's task list
+          usersMap.get(userId).tasks.push({
+            id: task.id,
+            title: task.title,
+            description: task.description,
+            status: task.status.find((s: any) => s.user._id.toString() === userId) || task.status[0],
+            priority: task.priority,
+            taskDate: task.taskDate,
+            dueDate: task.dueDate.find((d: any) => d.user._id.toString() === userId) || task.dueDate[0],
+            startDate: task.startDate.find((s: any) => s.user.toString() === userId) || task.startDate[0],
+            endDate: task.endDate.find((e: any) => e.user.toString() === userId) || task.endDate[0],
+            entryDone: task.entryDone,
+            noOfEntry: task.noOfEntry,
+            estimatedTime: task.estimatedTime.find((e: any) => e.user._id.toString() === userId) || task.estimatedTime[0],
+            timeSpent: task.timeSpent.find((t: any) => t.user._id.toString() === userId) || { time: [] },
+            tags: task.tags,
+            company: task.company,
+            individualBucket: task.individualBucket.find((i: any) => i.user.toString() === userId) || task.individualBucket[0],
+            createdAt: task.createdAt,
+            updatedAt: task.updatedAt
+          });
+        });
+      });
+      
+      // Convert map to array
+      return Array.from(usersMap.values());
+    };
+    const groupedTasks = groupTasksByAssignee(transformedTasks);
+
+    return res.status(200).json({ 
+      success: true,
+      count: tasks.length, 
+      tasks: groupedTasks,
+    });
+
+  } catch (error: any) {
+    console.error("Error generating report:", error.message);
+    console.error("Error stack:", error.stack);
+    return res.status(500).json({ 
+      message: "Failed to generate report", 
+      error: error.message 
+    });
+  }
+}
+
+ 
   private async getLocalTimeZone(): Promise<string> {
     return Intl.DateTimeFormat().resolvedOptions().timeZone;
   }
@@ -1611,4 +1799,5 @@ export default class TaskController {
       };
     });
   }
+ 
 }
