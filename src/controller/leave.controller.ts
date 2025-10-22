@@ -6,6 +6,15 @@ import mongoose from "mongoose";
 import ImageKit from "imagekit";
 import leaveSchema from "../DataBase/Schema/leave.schema";
 import User from "../DataBase/Schema/user.schema";
+import nodemailer from "nodemailer";
+
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+});
 
 const imagekit = new ImageKit({
   publicKey: process.env.IMAGEKIT_PUBLIC_KEY as string,
@@ -425,6 +434,140 @@ export default class LeaveController {
 
       return res.status(500).json({
         message: error?.message || "Server error during file upload"
+      });
+    }
+  }
+  static async uploadReportEmail(req: AuthRequest, res: Response) {
+    try {
+      const { user } = req;
+      if (!user || !user.sub) {
+        return res.status(401).json({ message: "User authentication required" });
+      }
+      const { emails, fileUrls } = req.body;
+      if (!emails) {
+        return res.status(400).json({ message: 'No recipients provided' });
+      }
+
+      if (!fileUrls) {
+        return res.status(400).json({ message: 'No files provided' });
+      }
+
+      const currentDate = new Date().toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      });
+let files = [];
+
+try {
+  if (typeof fileUrls === "string") {
+    files = JSON.parse(fileUrls); 
+  } else if (Array.isArray(fileUrls)) {
+    files = fileUrls.flatMap(f => {
+      if (typeof f === "string") {
+        try {
+          return JSON.parse(f);
+        } catch {
+          return [];
+        }
+      }
+      return f;
+    });
+  } else {
+    files = [];
+  }
+} catch (err) {
+  console.error("Error parsing fileUrls:", err);
+  files = [];
+}
+
+
+const fileListHtml = files
+  .map(
+    (file:any, index:any) => `
+    <div style="margin: 10px 0; padding: 12px; background-color: #f9fafb; border-left: 4px solid #4f46e5; border-radius: 4px;">
+      <p style="color: #4b5563;">File Name: ${file.name || "N/A"}</p>
+      <a href="${file.url || "#"}" target="_blank" style="color: #4f46e5; text-decoration: none; word-break: break-all;">
+        ${file.url || "No URL found"}
+      </a>
+    </div>
+  `
+  )
+  .join("");
+
+
+
+
+      const mailOptions = {
+        from: process.env.EMAIL_USER,
+        to: emails,
+        subject: `Attendance Report - ${currentDate}`,
+        html: `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 8px 8px 0 0; text-align: center; }
+          .content { background-color: #ffffff; padding: 30px; border: 1px solid #e5e7eb; }
+          .footer { background-color: #f9fafb; padding: 20px; border-radius: 0 0 8px 8px; text-align: center; color: #6b7280; font-size: 14px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1 style="margin: 0; font-size: 28px;">📊 Attendance Report</h1>
+            <p style="margin: 10px 0 0 0; opacity: 0.9;">${currentDate}</p>
+          </div>
+          
+          <div class="content">
+            <p style="font-size: 16px; color: #374151;">Dear Team,</p>
+            
+            <p style="color: #4b5563;">
+              Please find the attendance report and related documents attached below. 
+              These files contain detailed attendance records for your review.
+            </p>
+            
+            <h2 style="color: #1f2937; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px;">
+              📁 Attached Files (${files.length})
+            </h2>
+
+            ${fileListHtml}
+            
+            <p style="margin-top: 30px; color: #4b5563;">
+              Please review the documents at your earliest convenience. If you have any questions or need clarification, 
+              feel free to reach out.
+            </p>
+            
+            <p style="color: #4b5563;">
+              Best regards,<br/>
+              <strong>INTERTECH</strong>
+            </p>
+          </div>
+          
+          <div class="footer">
+            <p style="margin: 0;">This is an automated email. Please do not reply directly to this message.</p>
+          </div>
+        </div>
+      </body>
+    </html>
+  `,
+      };
+
+
+      await transporter.sendMail(mailOptions);
+
+      res.status(200).json({
+        message: 'Emails sent successfully',
+        recipients: emails.length,
+        files: fileUrls.length
+      });
+    } catch (error) {
+      console.error('Error sending email:', error);
+      res.status(500).json({
+        message: 'Failed to send email',
+        error: error instanceof Error ? error.message : 'Unknown error'
       });
     }
   }

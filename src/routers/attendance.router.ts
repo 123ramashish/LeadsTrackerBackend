@@ -30,6 +30,7 @@ attendanceRouter.patch("/leave", authenticate, upload.any(), LeaveController.com
 
 // upload report 
 attendanceRouter.post("/report", authenticate, upload.any(), LeaveController.uploadReport);
+attendanceRouter.post("/report/email",  authenticate, upload.any(), LeaveController.uploadReportEmail);
 
 
 export default attendanceRouter;
