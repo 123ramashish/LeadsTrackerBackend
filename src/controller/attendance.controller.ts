@@ -5,6 +5,7 @@ import { DateTime } from "luxon";
 import attendanceSchema from "../DataBase/Schema/attendance.schema";
 import User from "../DataBase/Schema/user.schema";
 import leaveSchema from "../DataBase/Schema/leave.schema";
+import { time } from "console";
 
 // Extend Express Request to include `user`
 interface AuthenticatedRequest extends Request {
@@ -31,24 +32,49 @@ export default class AttendanceController {
         punchOut,
         punchInLocation,
         punchOutLocation,
+        lunchIn,
+        lunchOut,
+        lunchInLocation,
+        lunchOutLocation,
       }: {
         punchIn?: string;
         punchOut?: string;
         punchInLocation?: string;
         punchOutLocation?: string;
+        lunchIn?: string;
+        lunchOut?: string;
+        lunchInLocation?: string;
+        lunchOutLocation?: string;
       } = req.body;
 
       if (!user?.sub) {
         return res.status(401).json({ message: "Authentication required" });
       }
       const localTimeZone = DateTime.local().zoneName;
-
+      // find existing active punch-in record
+      if (punchIn || punchOut) {
+        const existingRecord = await attendanceSchema.findOne({
+          user: new mongoose.Types.ObjectId(user.sub),
+          punchIn: { $gte: DateTime.now().setZone(localTimeZone).startOf('day').toJSDate() },
+        }).sort({ punchIn: -1 });
+        if (existingRecord && existingRecord?.punchIn && punchIn) {
+          return res.status(400).json({ message: "You have already punched in for today." });
+        }
+        else if (existingRecord && existingRecord?.punchOut && punchOut) {
+          return res.status(400).json({ message: "You have already punched out for today." });
+        }
+      }
       // Punch In
       if (punchIn) {
         const newRecord = await attendanceSchema.create({
           user: user.sub,
           punchIn: DateTime.fromISO(punchIn).setZone(localTimeZone).toJSDate(),
           punchInLocation: punchInLocation || "N/A",
+          punchInInfo: {
+            ip: req?.ip,
+            userAgent: req?.headers["user-agent"],
+
+          },
           createdAt: DateTime.now().setZone(localTimeZone).toJSDate(),
           company: user?.company,
         });
@@ -63,9 +89,73 @@ export default class AttendanceController {
           record: newRecord,
         });
       }
+      // lunchIn
+      else if (lunchIn) {
+        console.log("lunchin call")
+        const activeRecord = await attendanceSchema.findOne({
+          user: new mongoose.Types.ObjectId(user.sub),
+          punchIn: { $exists: true },
+          punchOut: { $exists: false },
+        }).sort({ punchIn: -1 });
+        if (!activeRecord) {
+          return res
+            .status(404)
+            .json({ message: "No active punch-in record found" });
+        }
+        const updated = await attendanceSchema.findByIdAndUpdate(
+          activeRecord._id,
+          {
+            lunchInInfo: {
+              time: DateTime.fromISO(lunchIn).setZone(localTimeZone).toJSDate(),
+              location: lunchInLocation || "N/A",
+              ip: req?.ip,
+              userAgent: req?.headers["user-agent"],
+            },
+          },
+          { new: true }
+        );
 
+        return res.status(200).json({
+          message: `${user.name || "A user"} took lunch at ${DateTime.fromISO(lunchIn).setZone(localTimeZone).toFormat("hh:mm a")}`,
+          location: updated?.lunchInLocation || "N/A",
+          record: updated,
+        });
+      }
+      // lunchOut
+      else if (lunchOut) {
+        console.log("lunchout call");
+        const activeRecord = await attendanceSchema.findOne({
+          user: new mongoose.Types.ObjectId(user.sub),
+          punchIn: { $exists: true },
+          lunchInInfo: { $exists: true },
+          punchOut: { $exists: false },
+        }).sort({ punchIn: -1 });
+
+        if (!activeRecord) {
+          return res
+            .status(404)
+            .json({ message: "No active punch-in/lunch-in record found" });
+        }
+        const updated = await attendanceSchema.findByIdAndUpdate(
+          activeRecord._id,
+          {
+            lunchOutInfo: {
+              time: DateTime.fromISO(lunchOut).setZone(localTimeZone).toJSDate(),
+              location: lunchOutLocation || "N/A",
+              ip: req?.ip,
+              userAgent: req?.headers["user-agent"],
+            },
+          },
+          { new: true }
+        );
+        return res.status(200).json({
+          message: `${user.name || "A user"} ended lunch at ${DateTime.fromISO(lunchOut).setZone(localTimeZone).toFormat("hh:mm a")}`,
+          location: updated?.lunchOutLocation || "N/A",
+          record: updated,
+        });
+      }
       // Punch Out
-      if (punchOut) {
+      else if (punchOut) {
         console.log("punchout call")
         const activeRecord = await attendanceSchema
           .findOne({
@@ -94,6 +184,10 @@ export default class AttendanceController {
           {
             punchOut: punchOutDate,
             punchOutLocation: punchOutLocation || "N/A",
+            punchOutInfo: {
+              ip: req?.ip,
+              userAgent: req?.headers["user-agent"],
+            },
             updatedAt: DateTime.now().setZone(localTimeZone).toJSDate(),
           },
           { new: true }
@@ -285,6 +379,7 @@ export default class AttendanceController {
               punchOut?: Date;
               punchInLocation?: string;
               punchOutLocation?: string;
+              [key: string]: any;
             }[];
           };
         }
@@ -300,13 +395,14 @@ export default class AttendanceController {
         if (!usersAttendance[userId][dateKey]) usersAttendance[userId][dateKey] = { punchDetails: [] };
 
         usersAttendance[userId][dateKey].punchDetails.push({
-          punchIn: record.punchIn,
-          punchOut: record.punchOut,
-          punchInLocation: record.punchInLocation,
-          punchOutLocation: record.punchOutLocation,
+          punchIn: record?.punchIn,
+          punchOut: record?.punchOut,
+          punchInLocation: record?.punchInLocation,
+          punchOutLocation: record?.punchOutLocation,
+          lunchInInfo: record?.lunchInInfo,
+          lunchOutInfo: record?.lunchOutInfo,
         });
       });
-
 
       return res.status(200).json({
         data: {
@@ -316,8 +412,8 @@ export default class AttendanceController {
           wfhData,
           summary: {
             totalHours: Number(totalHours.toFixed(2)),
-            requiredHours: 8,
-            incompleteHours: Math.max(8 - totalHours, 0),
+            requiredHours: 9,
+            incompleteHours: Math.max(9 - totalHours, 0),
           },
           attendanceStats: {
             presentCount,

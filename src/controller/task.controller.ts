@@ -182,8 +182,8 @@ export default class TaskController {
         company,
         tags,
         search,
-        limit = "5",
-        skip = "0",
+        limit,
+        skip,
         sortBy = "createdAt",
         order = "desc",
         dateRange,
@@ -205,7 +205,6 @@ export default class TaskController {
 
       const filter: any = {};
       const localTimeZone = DateTime.local().zoneName;
-      console.log("daterange", JSON.stringify(dateRange, null, 2), JSON.stringify(_dateRange, null, 2));
       // ✅ Multi-value fields
       if (_status) {
         filter["status.status"] = {
@@ -301,7 +300,6 @@ export default class TaskController {
       sort[sortBy] = order === "asc" ? 1 : -1;
 
       // ✅ Query DB
-      console.log("filter", JSON.stringify(filter));
       const tasks = await Task.find(filter)
         .populate("assignee", "_id name role")
         .populate("userEstimatedTime.user", "_id name role")
@@ -323,7 +321,6 @@ export default class TaskController {
         .limit(parseInt(limit));
 
       const total = await Task.countDocuments(filter);
-console.log("tasks", JSON.stringify(tasks, null, 2));
       return res.status(200).json({ total, count: tasks.length, tasks });
     } catch (error: any) {
       console.error("Error getting tasks:", error.message);

@@ -10,6 +10,10 @@ export interface IAttendance extends Document {
   createdAt: Date;
   updatedAt: Date;
   company: mongoose.Types.ObjectId;
+  punchInInfo?: Record<string, any> | null;
+  punchOutInfo?: Record<string, any> | null;
+  lunchInInfo?: Record<string, any> | null;
+  lunchOutInfo?: Record<string, any> | null;
 }
 
 const attendanceSchema = new Schema<IAttendance>(
@@ -27,6 +31,18 @@ const attendanceSchema = new Schema<IAttendance>(
     punchOut: Date,
     punchInLocation: String,
     punchOutLocation: String,
+    punchInInfo:{
+      type: Object,
+    },
+    punchOutInfo:{
+      type: Object,
+    },
+    lunchInInfo:{
+      type: Object,
+    },
+    lunchOutInfo:{
+      type: Object,
+    },
     company: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Registration",
