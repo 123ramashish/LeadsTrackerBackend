@@ -228,13 +228,20 @@ export default class AttendanceController {
         startDate: startDate_,
         endDate: endDate_,
         userId,
+        lunchAbsent,
+        lunchPresent,
+        active
+
       }: {
         startDate?: string;
         endDate?: string;
         userId?: string;
+        lunchAbsent?: string;
+        lunchPresent?: string;
+        active?: string;
       } = req.query;
 
-
+      console.log("Get attendance called with:", req.query);
       if (!user?.sub) {
         return res.status(401).json({ message: "Authentication required" });
       }
@@ -281,7 +288,20 @@ export default class AttendanceController {
           query.user = { $in: userIds };
         }
       }
+      if (lunchAbsent === "true") {
+        query.$or = [
+          { $and: [{ lunchInInfo: { $exists: false } }] },
 
+        ];
+      }
+      if (lunchPresent === "true") {
+        query.$or = [
+          { $and: [{ lunchInInfo: { $exists: true } }] }
+        ];
+      }
+      if (active === "true") {
+        query.punchOut = { $exists: false };
+      }
 
       const records = await attendanceSchema
         .find(query)
