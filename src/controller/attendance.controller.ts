@@ -241,7 +241,6 @@ export default class AttendanceController {
         active?: string;
       } = req.query;
 
-      console.log("Get attendance called with:", req.query);
       if (!user?.sub) {
         return res.status(401).json({ message: "Authentication required" });
       }
