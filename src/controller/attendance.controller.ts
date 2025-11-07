@@ -250,9 +250,13 @@ export default class AttendanceController {
       const startDate = startDate_
         ? DateTime.fromISO(startDate_)
           .setZone(localTimeZone)
-          .startOf("day")
+          .set({ hour: 0, minute: 0, second: 0, millisecond: 0 })
           .toJSDate()
-        : DateTime.now().setZone(localTimeZone).startOf("day").toJSDate();
+        : DateTime.now()
+          .setZone(localTimeZone)
+          .set({ hour: 0, minute: 0, second: 0, millisecond: 0 })
+          .toJSDate();
+
 
       const endDate = endDate_
         ? DateTime.fromISO(endDate_)
@@ -301,7 +305,7 @@ export default class AttendanceController {
       if (active === "true") {
         query.punchOut = { $exists: false };
       }
-
+      console.log("query", query)
       const records = await attendanceSchema
         .find(query)
         .populate([{ path: "user", model: User }])
