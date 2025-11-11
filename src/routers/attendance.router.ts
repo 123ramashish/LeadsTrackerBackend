@@ -7,6 +7,7 @@ const attendanceRouter = Router();
 
 attendanceRouter.post("/", authenticate, AttendanceController.punchHandler);
 attendanceRouter.get("/", authenticate, AttendanceController.getAttendance);
+attendanceRouter.patch("/remarks", authenticate, AttendanceController.addRemarksOnAttendance);
 // attendanceRouter.put("/", authenticate, AttendanceController.checkActiveSession);
 // attendanceRouter.patch("/", authenticate, AttendanceController.exportExcelData);
 // attendanceRouter.delete("/", authenticate, AttendanceController.deleteImageKitFile);

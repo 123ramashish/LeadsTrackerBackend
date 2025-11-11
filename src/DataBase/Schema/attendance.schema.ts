@@ -14,6 +14,7 @@ export interface IAttendance extends Document {
   punchOutInfo?: Record<string, any> | null;
   lunchInInfo?: Record<string, any> | null;
   lunchOutInfo?: Record<string, any> | null;
+  remarks:string;
 }
 
 const attendanceSchema = new Schema<IAttendance>(
@@ -51,6 +52,7 @@ const attendanceSchema = new Schema<IAttendance>(
       type: String,
       enum: ["Present", "Absent", "On Leave"],
     },
+    remarks:String,
   },
   { timestamps: true }
 );

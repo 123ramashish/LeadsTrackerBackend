@@ -89,7 +89,6 @@ export default class DashboardController {
       if (hasAccept === "true") {
         match["Accept.status"] = true;
       }
-      console.log("match", match)
       // Aggregation pipeline
       const tasks = await Task.aggregate([
         { $match: match },
