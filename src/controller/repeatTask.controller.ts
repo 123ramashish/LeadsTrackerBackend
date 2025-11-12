@@ -27,9 +27,7 @@ export default class RepeatTaskController {
   async createTask(req: AuthRequest, res: Response) {
     try {
       const body = req.body;
-      console.log("body",body)
       const userId = req.user?.sub;
-      console.log("body", body);
       if (!userId) {
         return res.status(401).json({ message: "Unauthorized" });
       }

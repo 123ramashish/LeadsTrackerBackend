@@ -139,7 +139,6 @@ export default class SuggestionController {
 
       const localTimeZone = DateTime.local().zoneName;
       const { title, suggestion } = req.body;
-      console.log("body", req.body, user);
       const newSuggestion = new Suggestion({
         title,
         suggestion,
@@ -315,7 +314,6 @@ export default class SuggestionController {
     try {
       const { documentId, comment, userId } = req.body;
       const user = req.user;
-      console.log("body", req.body);
       if (!documentId || !comment) {
         return res.status(400).json({ message: "Missing data" });
       }

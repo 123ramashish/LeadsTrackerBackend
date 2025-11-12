@@ -77,7 +77,6 @@ export default class AuthController {
   }
 
   private async updateLastLogin(userId: string) {
-    console.log("Updating last login for user:", userId);
     await User.findByIdAndUpdate(userId, { lastLogin: new Date() });
   }
   private async sendOtpViaSms(phone: string, otp: string) {
@@ -86,7 +85,6 @@ export default class AuthController {
       const fast2smsApiKey =
         process.env.FAST2SMS_API_KEY! ||
         "IXjRJ6DPuaTqy4M5Sxk9CwlgWctYnL0O1B2Qo8pAzhfGEZKU7sDJzdRbOP96nXZF4LifwHlx5k1GrhMB";
-      // console.log('Sending OTP to:', phone , " fast2smsApiKey ", fast2smsApiKey);
       const message = `Your OTP is ${otp}. This OTP is valid for 10 minutes.`;
       // 1201172171239468318
       const url = `https://www.fast2sms.com/dev/bulkV2`;
@@ -107,7 +105,6 @@ export default class AuthController {
           },
         }
       );
-      // console.log('Response:', response);
       if (response.status === 200) {
         console.log("OTP sent successfully");
         return;
@@ -123,7 +120,6 @@ export default class AuthController {
   private async sendOtpViaEmail(email: string, otp: string) {
     try {
       // Implement email sending logic here using nodemailer or any email service
-      console.log(`Sending OTP ${otp} to email ${email}`);
       const transporter = nodemailer.createTransport({
         service: "gmail",
         auth: {

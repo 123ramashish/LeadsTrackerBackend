@@ -30,7 +30,6 @@ export default class GoalController {
         repeatType,
         repeatConfig,
       } = req.body;
-      console.log("body", req.body);
 
       if (!name || !description || !targetDate || !category) {
         return res.status(400).json({ message: "Missing required fields" });

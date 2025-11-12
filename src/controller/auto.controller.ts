@@ -11,16 +11,13 @@ import { sendPushNotification } from "../helper/notifications";
 export default class AutoStatusUpdater {
   static async runAutoStatusUpdate() {
     try {
-      console.log("[AUTO STATUS UPDATE] Starting status update...");
 
       const localTimeZone = DateTime.local().zoneName;
       const today = DateTime.now().setZone(localTimeZone).startOf("day");
-      console.log("today", today.toISODate());
 
       // 1. Check holiday
       const isHoliday = await this.checkIfHoliday(today.toJSDate());
       if (isHoliday) {
-        console.log("[AUTO STATUS UPDATE] Skipped - Today is a holiday");
         return {
           success: true,
           updatedTasksCount: 0,
@@ -40,7 +37,6 @@ export default class AutoStatusUpdater {
       const activeUserIds = userIds.filter((id) => !usersOnLeave.includes(id));
 
       if (activeUserIds.length === 0) {
-        console.log("[AUTO STATUS UPDATE] No active users today");
         return {
           success: true,
           updatedTasksCount: 0,
@@ -57,7 +53,6 @@ export default class AutoStatusUpdater {
         ],
       }).lean();
 
-      console.log("tasks found", tasks.length);
 
       let updatedTasksCount = 0;
       const expiredTaskUser: string[] = [];
@@ -114,11 +109,6 @@ export default class AutoStatusUpdater {
         }
       }
 
-      console.log("expiredTaskUser", expiredTaskUser);
-      console.log(
-        `[AUTO STATUS UPDATE] Updated status for ${updatedTasksCount} tasks.`
-      );
-
       return {
         success: true,
         updatedTasksCount,
@@ -136,15 +126,12 @@ export default class AutoStatusUpdater {
    */
   static async runAutoRepeatTaskCreation() {
     try {
-      console.log("[AUTO REPEAT TASK] Starting repeat task creation...");
       const localTimeZone = DateTime.local().zoneName;
       const today = DateTime.now().setZone(localTimeZone);
-      console.log("today", today);
 
       // 1. Check holiday
       const isHoliday = await this.checkIfHoliday(today.toJSDate());
       if (isHoliday) {
-        console.log("[AUTO STATUS UPDATE] Skipped - Today is a holiday");
         return {
           success: true,
           updatedTasksCount: 0,
@@ -164,19 +151,16 @@ export default class AutoStatusUpdater {
       const activeUserIds = userIds.filter((id) => !usersOnLeave.includes(id));
 
       if (activeUserIds.length === 0) {
-        console.log("[AUTO STATUS UPDATE] No active users today");
         return {
           success: true,
           updatedTasksCount: 0,
           message: "No active users",
         };
       }
-      console.log("activeUserId", activeUserIds)
       // 4. Find tasks assigned to active users with expired dates
       const repeatTasks = await RepeatTask.find({
         assignee: { $in: activeUserIds },
       }).lean();
-      console.log("repeatTask", repeatTasks)
       let createdCount = 0;
       let skippedCount = 0;
 
@@ -195,14 +179,12 @@ export default class AutoStatusUpdater {
           if (!shouldCreate) continue;
           const repeatTaskIdLength = repeatTask?.repeatTaskId?.length;
           const exists = await this.taskExistsForToday(repeatTask?.repeatTaskId[repeatTaskIdLength - 1], today);
-          console.log("exist", exists)
           if (exists) continue;
 
           const result = await this.createTaskFromRepeat(
             repeatTask._id.toString(),
             today.toJSDate()
           );
-          console.log("result", result)
           if (result.success) {
             await RepeatTask.findByIdAndUpdate(
               repeatTask._id,
@@ -222,9 +204,7 @@ export default class AutoStatusUpdater {
         }
       }
 
-      console.log(
-        `[AUTO REPEAT TASK] Created ${createdCount} tasks, skipped ${skippedCount} tasks.`
-      );
+      
 
       return { success: true, createdCount, skippedCount };
     } catch (error) {

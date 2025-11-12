@@ -19,7 +19,6 @@ export default class LeadController {
 
       const { partyName, email, phone, contactPerson, comments, project } =
         req.body;
-      console.log("body", req.body);
       if (!partyName || !email || !phone || !contactPerson) {
         return res.status(400).json({
           message:

@@ -183,7 +183,7 @@ export default class TaskController {
         tags,
         search,
         limit,
-        skip,
+        page,
         sortBy = "createdAt",
         order = "desc",
         dateRange,
@@ -317,11 +317,11 @@ export default class TaskController {
         .populate("Accept.user", "_id name role")
         .populate("actionEvents.user", "_id name role")
         .sort(sort)
-        .skip(parseInt(skip))
+        .skip(parseInt(page))
         .limit(parseInt(limit));
 
       const total = await Task.countDocuments(filter);
-      return res.status(200).json({ total, count: tasks.length, tasks });
+      return res.status(200).json({ total,totalPages:Math.round(total/limit), count: tasks.length, tasks });
     } catch (error: any) {
       console.error("Error getting tasks:", error.message);
       return res
@@ -355,7 +355,6 @@ export default class TaskController {
         const users = await User.find({ company }, "_id");
         assigneeIds = users.map((u) => u._id.toString());
       }
-      console.log("assigneeIds", assignees, company, assigneeIds)
       // Fetch tasks
       const taskAmount = await Task.find({
         company: new mongoose.Types.ObjectId(company),
@@ -374,7 +373,6 @@ export default class TaskController {
         .populate("createdBy", "_id name role")
 
 
-      console.log("taskAmount", JSON.stringify(taskAmount));
       return res.status(200).json({ taskAmount });
     } catch (error: any) {
       console.error("Error calculating task time:", error.message);
@@ -405,8 +403,8 @@ export default class TaskController {
         company,
         tags,
         search,
-        limit = "100",
-        skip = "0",
+        limit,
+        page,
         sortBy = "createdAt",
         order = "desc",
         dateRange,
@@ -559,11 +557,14 @@ export default class TaskController {
           return { ...task, userStatus: currentStatus, sortValue };
         })
         .filter((task: any) => !_status || statusList.includes(task.userStatus));
+        const totalCount = await Task.countDocuments(filter); 
+
       const sortedTasks = userTasks
         .sort((a: any, b: any) => a.sortValue - b.sortValue)
-        .slice(parseInt(skip), parseInt(skip) + parseInt(limit));
+        .slice(parseInt(page), parseInt(page) + parseInt(limit));
       return res.status(200).json({
-        count: sortedTasks.length,
+        count: totalCount,
+        totalPages:Math.round(totalCount/limit),
         tasks: sortedTasks.map(({ sortValue, ...rest }) => rest),
       });
     } catch (error: any) {
@@ -782,7 +783,6 @@ export default class TaskController {
   async addTaskMessage(req: Request, res: Response) {
     try {
       const { message, files, address, taskId, company, userId } = req.body;
-      console.log("body", req.body);
       if (!message || !taskId || !company || !userId) {
         return res.status(400).json({ message: "Missing required fields" });
       }
@@ -820,7 +820,6 @@ export default class TaskController {
   async getTaskMessages(req: Request, res: Response) {
     try {
       const { id, company } = req.query as { id?: string; company?: string };
-      console.log("Incoming query params:", id, company);
 
       if (!id || !company) {
         return res.status(400).json({ message: "Missing task ID or company" });
@@ -1021,7 +1020,6 @@ export default class TaskController {
     try {
       const authUser: any = req.user;
       let { userId } = req.query; // could be string or array
-      console.log("userid", userId);
       let query: any = {};
 
       if (userId) {
@@ -1091,7 +1089,6 @@ export default class TaskController {
   async bucketShift(req: AuthRequest, res: Response) {
     try {
       const { taskId, userId, toBucket } = req.body;
-      console.log(taskId, userId, toBucket)
       if (!taskId || !userId || !toBucket) {
         return res.status(400).json({ message: "Missing required fields" });
       }
@@ -1139,7 +1136,6 @@ export default class TaskController {
   async pickTask(req: AuthRequest, res: Response) {
     try {
       const { taskId, assignee, bucketType, targetDate } = req.body;
-      console.log("body", req.body);
 
       const task: any = await Task.findById(
         new mongoose.Types.ObjectId(taskId)
@@ -1276,7 +1272,6 @@ export default class TaskController {
   async estimatedTimeUpdate(req: AuthRequest, res: Response) {
     try {
       const { _id, userEstimatedTimes } = req.body;
-      // console.log("userEstimatedTimes", JSON.stringify(userEstimatedTimes));
 
       if (!_id || !userEstimatedTimes || !Array.isArray(userEstimatedTimes)) {
         return res.status(400).json({ message: "Invalid data format" });
@@ -1356,7 +1351,6 @@ export default class TaskController {
   async updateTags(req: Request, res: Response) {
     try {
       const { id, company, tags } = req.body;
-      console.log("tags", id, company, tags);
       if (!id || !company || !Array.isArray(tags)) {
         return res
           .status(400)
@@ -1412,7 +1406,6 @@ export default class TaskController {
   async addContactPerson(req: Request, res: Response) {
     try {
       const { name, phone, task }: any = req.body;
-      console.log("body", req.body)
       if (!task || !mongoose.Types.ObjectId.isValid(task as string)) {
         return res.status(400).json({ message: "Invalid or missing task ID" });
       }
@@ -1426,7 +1419,6 @@ export default class TaskController {
         { $push: { contactPerson: { name, phone } } },
         { new: true }
       ).select("contactPerson");
-      console.log("updateTask", updatedTask)
       if (!updatedTask) {
         return res.status(404).json({ message: "Task not found" });
       }
@@ -1471,7 +1463,6 @@ export default class TaskController {
   async removeContactPerson(req: Request, res: Response) {
     try {
       const { task, index } = req.body;
-      console.log("task", task, index, typeof index)
       if (!task) {
         return res.status(400).json({ message: "Invalid or missing task ID" });
       }
@@ -1489,7 +1480,6 @@ export default class TaskController {
 
       taskDoc.contactPerson.splice(idx, 1);
       await taskDoc.save();
-      console.log("taskDoc", taskDoc)
       return res.status(200).json({ contactPerson: taskDoc.contactPerson });
     } catch (error: any) {
       console.error("Error removing contact person:", error.message);
@@ -1578,11 +1568,7 @@ if (dateRange) {
         filter["individualBucket.individual"] = individualBucket === "true";
       } else {
         filter["individualBucket.individual"] = false;
-      }
-
-
-    // console.log("Final query filter:", JSON.stringify(filter, null, 2));
-    
+      }    
     // Query DB with the fixed filter
     const tasks = await Task.find(filter)
       .populate("assignee", "_id name role email")

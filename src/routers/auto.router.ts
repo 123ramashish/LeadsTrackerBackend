@@ -5,7 +5,6 @@ import { DateTime } from "luxon";
 
 // Run createTaskFromRepeatTask every day at 9:00 AM
 cron.schedule("0 9 * * *", async () => {
-  console.log("[AUTO CRON] Running createTaskFromRepeatTask...");
   try {
     await AutoController.runAutoRepeatTaskCreation();
   } catch (err) {
@@ -15,7 +14,6 @@ cron.schedule("0 9 * * *", async () => {
 
 // Run changeExpiredTaskStatus every day at 9:05 AM
 cron.schedule("5 9 * * *", async () => {
-  console.log("[AUTO CRON] Running changeExpiredTaskStatus...");
   try {
     await AutoController.runAutoStatusUpdate();
 

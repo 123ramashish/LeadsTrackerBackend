@@ -33,7 +33,6 @@ export const authenticate = async (
       // ✅ Token expired or invalid → check if it's expiration error
       if (error.name === "TokenExpiredError") {
         const decoded = jwt.decode(token) as any;
-        console.log("decoded ",decoded)
         const userId = decoded?.sub;
 
         if (!userId) return res.status(401).json({ message: "Invalid token" });
@@ -57,7 +56,6 @@ export const authenticate = async (
           // Attach user & new token in header for client to update
           req.user = { sub: user._id, email: user.email, role: user.userRole ,company:user.company};
           res.setHeader("x-new-access-token", newAccessToken);
-          console.log("newAccessToken",newAccessToken)
           res.cookie("accessToken", newAccessToken);
 
           return next();

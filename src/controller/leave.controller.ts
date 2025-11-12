@@ -126,7 +126,6 @@ export default class LeaveController {
         },
         { new: true }
       );
-      console.log("updatedLeave", updatedLeave);
       if (!updatedLeave) {
         return res.status(404).json({ message: "Leave not found" });
       }
@@ -144,7 +143,6 @@ export default class LeaveController {
 
   static async getLeaves(req: AuthRequest, res: Response) {
     try {
-      console.log("api call")
       const { user } = req;
       if (!user || !user.sub) {
         return res.status(401).json({ message: "User authentication required" });
@@ -161,7 +159,6 @@ export default class LeaveController {
       } = req.query;
 
       const query: any = { company: user?.company };
-      console.log("api call2", users, startDate, endDate, startTime, endTime)
 
       // 🔹 User filtering
       if (user.role === "staff") {
@@ -241,7 +238,6 @@ export default class LeaveController {
       }
 
 
-      console.log("query", query)
 
       const leaves = await leaveSchema
         .find(query)

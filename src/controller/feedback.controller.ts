@@ -93,7 +93,6 @@ export default class FeedbackController {
     try {
       const { id } = req.params;
       const { comment } = req.body;
-      console.log("body", id, comment.comment);
       if (!comment) {
         return res.status(400).json({ message: "Message required" });
       }

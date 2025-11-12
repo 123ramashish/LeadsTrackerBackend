@@ -5,7 +5,6 @@ import { DateTime } from "luxon";
 import attendanceSchema from "../DataBase/Schema/attendance.schema";
 import User from "../DataBase/Schema/user.schema";
 import leaveSchema from "../DataBase/Schema/leave.schema";
-import { time } from "console";
 
 // Extend Express Request to include `user`
 interface AuthenticatedRequest extends Request {
@@ -91,7 +90,6 @@ export default class AttendanceController {
       }
       // lunchIn
       else if (lunchIn) {
-        console.log("lunchin call")
         const activeRecord = await attendanceSchema.findOne({
           user: new mongoose.Types.ObjectId(user.sub),
           punchIn: { $exists: true },
@@ -123,7 +121,6 @@ export default class AttendanceController {
       }
       // lunchOut
       else if (lunchOut) {
-        console.log("lunchout call");
         const activeRecord = await attendanceSchema.findOne({
           user: new mongoose.Types.ObjectId(user.sub),
           punchIn: { $exists: true },
@@ -156,7 +153,6 @@ export default class AttendanceController {
       }
       // Punch Out
       else if (punchOut) {
-        console.log("punchout call")
         const activeRecord = await attendanceSchema
           .findOne({
             user: new mongoose.Types.ObjectId(user.sub),
@@ -459,7 +455,6 @@ export default class AttendanceController {
 static async addRemarksOnAttendance(req: AuthenticatedRequest, res: Response) {
   try {
     const user = req.user;
-    console.log("user",user,"body",req.body)
     if (!user?.sub || user?.role !== 'admin') {
       return res.status(401).json({ message: "Authentication required" });
     }
