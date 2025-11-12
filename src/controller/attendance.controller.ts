@@ -243,19 +243,23 @@ export default class AttendanceController {
 
       const localTimeZone = DateTime.local().zoneName;
       console.log("startDate_", startDate_, "endDate_", endDate_)
-
       const startDate = startDate_
-        ? DateTime.fromISO(startDate_, { zone: 'utc' })
-          .startOf("day")
+        ? DateTime.fromISO(startDate_)
+          .setZone(localTimeZone)
+          .set({ hour: 0, minute: 0, second: 0, millisecond: 0 })
           .toJSDate()
-        : DateTime.now().startOf("day").toJSDate();
+        : DateTime.now()
+          .setZone(localTimeZone)
+          .set({ hour: 0, minute: 0, second: 0, millisecond: 0 })
+          .toJSDate();
+
 
       const endDate = endDate_
-        ? DateTime.fromISO(endDate_, { zone: 'utc' })
+        ? DateTime.fromISO(endDate_)
+          .setZone(localTimeZone)
           .endOf("day")
           .toJSDate()
-        : DateTime.now().endOf("day").toJSDate();
-
+        : DateTime.now().setZone(localTimeZone).endOf("day").toJSDate();
       console.log("startDate", startDate, "endDate", endDate)
       let query: Record<string, any> = {
         punchIn: { $gte: startDate, $lte: endDate },
