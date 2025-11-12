@@ -242,25 +242,21 @@ export default class AttendanceController {
       }
 
       const localTimeZone = DateTime.local().zoneName;
+      console.log("startDate_", startDate_, "endDate_", endDate_)
 
       const startDate = startDate_
-        ? DateTime.fromISO(startDate_)
-          .setZone(localTimeZone)
-          .set({ hour: 0, minute: 0, second: 0, millisecond: 0 })
+        ? DateTime.fromISO(startDate_, { zone: 'utc' })
+          .startOf("day")
           .toJSDate()
-        : DateTime.now()
-          .setZone(localTimeZone)
-          .set({ hour: 0, minute: 0, second: 0, millisecond: 0 })
-          .toJSDate();
-
+        : DateTime.now().startOf("day").toJSDate();
 
       const endDate = endDate_
-        ? DateTime.fromISO(endDate_)
-          .setZone(localTimeZone)
+        ? DateTime.fromISO(endDate_, { zone: 'utc' })
           .endOf("day")
           .toJSDate()
-        : DateTime.now().setZone(localTimeZone).endOf("day").toJSDate();
+        : DateTime.now().endOf("day").toJSDate();
 
+      console.log("startDate", startDate, "endDate", endDate)
       let query: Record<string, any> = {
         punchIn: { $gte: startDate, $lte: endDate },
         company: user.company,
@@ -414,8 +410,8 @@ export default class AttendanceController {
         if (!usersAttendance[userId][dateKey]) usersAttendance[userId][dateKey] = { punchDetails: [] };
 
         usersAttendance[userId][dateKey].punchDetails.push({
-          attendanceId:record?._id,
-          remarks:record?.remarks,
+          attendanceId: record?._id,
+          remarks: record?.remarks,
           punchIn: record?.punchIn,
           punchOut: record?.punchOut,
           punchInLocation: record?.punchInLocation,
@@ -452,31 +448,31 @@ export default class AttendanceController {
         .json({ message: "Internal server error", error: error.message });
     }
   }
-static async addRemarksOnAttendance(req: AuthenticatedRequest, res: Response) {
-  try {
-    const user = req.user;
-    if (!user?.sub || user?.role !== 'admin') {
-      return res.status(401).json({ message: "Authentication required" });
-    }
-    const { _id, remarks } = req.body;
-    const result = await attendanceSchema.findOneAndUpdate(
-      {
-        _id: new mongoose.Types.ObjectId(_id)
-      },
-      {
-        remarks: remarks ? remarks : ''
+  static async addRemarksOnAttendance(req: AuthenticatedRequest, res: Response) {
+    try {
+      const user = req.user;
+      if (!user?.sub || user?.role !== 'admin') {
+        return res.status(401).json({ message: "Authentication required" });
       }
-    );
-    if (!result) {
-      return res.status(404).json({ message: "Attendance record not found" });
+      const { _id, remarks } = req.body;
+      const result = await attendanceSchema.findOneAndUpdate(
+        {
+          _id: new mongoose.Types.ObjectId(_id)
+        },
+        {
+          remarks: remarks ? remarks : ''
+        }
+      );
+      if (!result) {
+        return res.status(404).json({ message: "Attendance record not found" });
+      }
+      return res.status(200).json({ message: "Remarks updated successfully" });
+    } catch (error: any) {
+      console.error(error);
+      return res
+        .status(500)
+        .json({ message: "Internal server error", error: error.message });
     }
-    return res.status(200).json({ message: "Remarks updated successfully" });
-  } catch (error: any) {
-    console.error(error);
-    return res
-      .status(500)
-      .json({ message: "Internal server error", error: error.message });
   }
-}
 
 }
