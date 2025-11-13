@@ -19,4 +19,6 @@ userRouter.put("/:id", auth_middleware_1.authenticate, user_controller_1.default
 userRouter.delete("/:id", auth_middleware_1.authenticate, (0, auth_middleware_1.authorizeRoles)(["admin"]), user_controller_1.default.deleteUser);
 // Update password
 userRouter.put("/:id/password", auth_middleware_1.authenticate, user_controller_1.default.updatePassword);
+// verify auth during login
+userRouter.get('/auth/verify', auth_middleware_1.authenticate, (req, res) => { res.status(200).json({ message: "Valid Token" }); });
 exports.default = userRouter;

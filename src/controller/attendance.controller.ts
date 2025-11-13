@@ -260,9 +260,8 @@ export default class AttendanceController {
           .endOf("day")
           .toJSDate()
         : DateTime.now().setZone(localTimeZone).endOf("day").toJSDate();
-      console.log("startDate", startDate, "endDate", endDate)
       let query: Record<string, any> = {
-        punchIn: { $gte: startDate_, $lte: endDate_ },
+        punchIn: { $gte: startDate_, $lte: endDate},
         company: user.company,
       };
 
