@@ -13,7 +13,6 @@ class RegistrationController {
         try {
             const { userType, name, email, phone, password, role } = req.body;
             // Validate userType presence
-            console.log("body", req.body);
             if (!userType) {
                 return res.status(400).json({ message: "User type is required" });
             }
