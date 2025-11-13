@@ -47,5 +47,6 @@ userRouter.put(
   authenticate,
   UserController.updatePassword
 );
-
+// verify auth during login
+userRouter.get('/auth/verify',authenticate, (req,res)=>{res.status(200).json({message:"Valid Token"})})
 export default userRouter;

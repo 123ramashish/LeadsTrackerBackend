@@ -3,6 +3,7 @@ dotenv.config();
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import User from "../DataBase/Schema/user.schema";
+import mongoose from 'mongoose';
 
 interface AuthRequest extends Request {
   user?: any;
@@ -47,12 +48,12 @@ export const authenticate = async (
           jwt.verify(user.refreshToken, process.env.JWT_SECRET || "secret");
 
           // ✅ Generate new access token
+          
           const newAccessToken = jwt.sign(
             { sub: user._id, email: user.email, role: user.userRole },
             process.env.JWT_SECRET || "secret",
             { expiresIn: "1h" }
           );
-
           // Attach user & new token in header for client to update
           req.user = { sub: user._id, email: user.email, role: user.userRole ,company:user.company};
           res.setHeader("x-new-access-token", newAccessToken);
