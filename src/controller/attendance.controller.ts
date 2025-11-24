@@ -587,29 +587,81 @@ export default class AttendanceController {
         .json({ message: "Internal server error", error: error.message });
     }
   }
-  static async getMessage(req: AuthenticatedRequest, res: Response) {
-    try {
-      const user = req.user
-      if (!user?.sub) {
-        return res.status(401).json({ message: "Authentication required" });
-      }
-      const { messageId } = req.query as any
-      const result: any = await attendanceChatSchema.find({ _id: new mongoose.Types.ObjectId(messageId), company: new mongoose.Types.ObjectId(user.company) }).populate([
+  // static async getMessage(req: AuthenticatedRequest, res: Response) {
+  //   try {
+  //     const user = req.user
+
+  //     if (!user?.sub) {
+  //       return res.status(401).json({ message: "Authentication required" });
+  //     }
+  //     console.log("users",user.sub)
+  //     const { messageId } = req.query as any
+  //     const result: any = await attendanceChatSchema.find({ _id: new mongoose.Types.ObjectId(messageId), company: new mongoose.Types.ObjectId(user.company) }).populate([
+  //       {
+  //         path: "messages.user",
+  //         model: User,
+  //         select: SAFE_USER_SELECT,
+  //       },
+  //     ])
+  //     if (!result) {
+  //       return res.status(400).send("Data to found!")
+  //     }
+  //     return res.status(200).json({ data: result || [] })
+  //   } catch (error) {
+  //     console.log("Error", error)
+  //     return res.status(500).send("Something went wrong!")
+  //   }
+  // }
+static async getMessage(req: AuthenticatedRequest, res: Response) {
+  try {
+    const user = req.user;
+console.log("api hit")
+    if (!user?.sub) {
+      return res.status(401).json({ message: "Authentication required" });
+    }
+
+    const { messageId } = req.query as any;
+
+    const chat = await attendanceChatSchema
+      .findOne({
+        _id: new mongoose.Types.ObjectId(messageId),
+        company: new mongoose.Types.ObjectId(user.company)
+      })
+      .populate([
         {
           path: "messages.user",
           model: User,
           select: SAFE_USER_SELECT,
         },
-      ])
-      if (!result) {
-        return res.status(400).send("Data to found!")
-      }
-      return res.status(200).json({ data: result || [] })
-    } catch (error) {
-      console.log("Error", error)
-      return res.status(500).send("Something went wrong!")
+      ]);
+
+    if (!chat) {
+      return res.status(400).send("Data not found!");
     }
+
+    const loggedInUserId = user.sub.toString();
+    const returnChat = JSON.parse(JSON.stringify(chat));
+
+    let needUpdate = false;
+    chat.messages.forEach(msg => {
+      console.log("msg.user",msg.user)
+      if (msg.user._id.toString() !== loggedInUserId.toString() && msg.status !== "read") {
+        msg.status = "read";
+        needUpdate = true;
+      }
+    });
+
+    if (needUpdate) chat.save(); 
+
+    return res.status(200).json({ data: returnChat });
+
+  } catch (error) {
+    console.log("Error", error);
+    return res.status(500).send("Something went wrong!");
   }
+}
+
+
   static async updateMessageStatus(req: AuthenticatedRequest, res: Response) {
     try {
       const user = req.user;
