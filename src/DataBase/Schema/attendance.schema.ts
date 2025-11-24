@@ -14,7 +14,8 @@ export interface IAttendance extends Document {
   punchOutInfo?: Record<string, any> | null;
   lunchInInfo?: Record<string, any> | null;
   lunchOutInfo?: Record<string, any> | null;
-  remarks:string;
+  remarks: string;
+  messageId: mongoose.Types.ObjectId;
 }
 
 const attendanceSchema = new Schema<IAttendance>(
@@ -32,16 +33,16 @@ const attendanceSchema = new Schema<IAttendance>(
     punchOut: Date,
     punchInLocation: String,
     punchOutLocation: String,
-    punchInInfo:{
+    punchInInfo: {
       type: Object,
     },
-    punchOutInfo:{
+    punchOutInfo: {
       type: Object,
     },
-    lunchInInfo:{
+    lunchInInfo: {
       type: Object,
     },
-    lunchOutInfo:{
+    lunchOutInfo: {
       type: Object,
     },
     company: {
@@ -52,7 +53,11 @@ const attendanceSchema = new Schema<IAttendance>(
       type: String,
       enum: ["Present", "Absent", "On Leave"],
     },
-    remarks:String,
+    remarks: String,
+    messageId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "AttendanceChat"
+    }
   },
   { timestamps: true }
 );
