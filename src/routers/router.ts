@@ -17,10 +17,10 @@ import { authenticate } from "../middlewares/auth.middleware";
 
 const router = Router();
 
+router.use("/attendance", attendanceRouter);
 router.use("/user", userRouter);
 router.use("/holidays", holidayRouter);
 router.use("/dashboard", dashboardRouter);
-router.use("/attendance", attendanceRouter);
 router.use("/suggestions", suggestionRouter);
 router.use("/feedbacks", feedbackRouter);
 router.use("/leads", leadRouter);

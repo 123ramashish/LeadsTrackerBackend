@@ -5,6 +5,7 @@ import { DateTime } from "luxon";
 import attendanceSchema from "../DataBase/Schema/attendance.schema";
 import User from "../DataBase/Schema/user.schema";
 import leaveSchema from "../DataBase/Schema/leave.schema";
+import attendanceChatSchema from "../DataBase/Schema/attendanceChat.schema";
 
 // Extend Express Request to include `user`
 interface AuthenticatedRequest extends Request {
@@ -20,6 +21,9 @@ const isSameDay = (date1: Date, date2: Date): boolean =>
   date1.getFullYear() === date2.getFullYear() &&
   date1.getMonth() === date2.getMonth() &&
   date1.getDate() === date2.getDate();
+
+const SAFE_USER_SELECT =
+  "-password -otp -otpExpires -refreshToken -isDelete -lastLogin -__v";
 
 export default class AttendanceController {
   /** POST /attendance — Punch In/Out */
@@ -216,7 +220,7 @@ export default class AttendanceController {
     }
   }
 
-  /** GET /attendance — Fetch Attendance */
+
   static async getAttendance(req: AuthenticatedRequest, res: Response) {
     try {
       const { user } = req;
@@ -226,8 +230,7 @@ export default class AttendanceController {
         userId,
         lunchAbsent,
         lunchPresent,
-        active
-
+        active,
       }: {
         startDate?: string;
         endDate?: string;
@@ -242,8 +245,8 @@ export default class AttendanceController {
       }
 
       const localTimeZone = DateTime.local().zoneName;
-      console.log("startDate_", startDate_, "endDate_", endDate_)
-      const startDate = startDate_
+
+      const startDate: Date = startDate_
         ? DateTime.fromISO(startDate_)
           .setZone(localTimeZone)
           .set({ hour: 0, minute: 0, second: 0, millisecond: 0 })
@@ -253,22 +256,21 @@ export default class AttendanceController {
           .set({ hour: 0, minute: 0, second: 0, millisecond: 0 })
           .toJSDate();
 
-
-      const endDate = endDate_
+      const endDate: Date = endDate_
         ? DateTime.fromISO(endDate_)
           .setZone(localTimeZone)
           .endOf("day")
           .toJSDate()
         : DateTime.now().setZone(localTimeZone).endOf("day").toJSDate();
-      let query: Record<string, any> = {
-        punchIn: { $gte: startDate_, $lte: endDate},
+
+      const query: Record<string, any> = {
+        punchIn: { $gte: startDate_, $lte: endDate },
         company: user.company,
       };
 
       let userIds: mongoose.Types.ObjectId[] = [];
 
       if (user.role === "staff") {
-        // FIX: Use user.sub instead of user._id
         query.user = new mongoose.Types.ObjectId(user.sub);
       } else if (user.role === "admin") {
         if (!userId || userId.trim() === "") {
@@ -281,49 +283,89 @@ export default class AttendanceController {
             .filter((id: string) => mongoose.isValidObjectId(id))
             .map((id: string) => new mongoose.Types.ObjectId(id));
         }
-
         if (userIds.length > 0) {
           query.user = { $in: userIds };
         }
       }
-      if (lunchAbsent === "true") {
-        query.$or = [
-          { $and: [{ lunchInInfo: { $exists: false } }] },
 
-        ];
+      if (lunchAbsent === "true") {
+        query.$or = [{ $and: [{ lunchInInfo: { $exists: false } }] }];
       }
       if (lunchPresent === "true") {
-        query.$or = [
-          { $and: [{ lunchInInfo: { $exists: true } }] }
-        ];
+        query.$or = [{ $and: [{ lunchInInfo: { $exists: true } }] }];
       }
       if (active === "true") {
         query.punchOut = { $exists: false };
       }
-      console.log("query", query)
+
       const records = await attendanceSchema
         .find(query)
-        .populate([{ path: "user", model: User }])
+        .populate([
+          {
+            path: "user",
+            model: User,
+            select: SAFE_USER_SELECT,
+          },
+        ])
         .sort({ punchIn: -1 })
         .lean();
+
+      const messageIds = records
+        .map((r: any) => r?.messageId)
+        .filter((id: any) => !!id) as mongoose.Types.ObjectId[];
+
+      let sentCountsByChatId = new Map<string, number>();
+      if (messageIds.length > 0) {
+        const sentCounts = await attendanceChatSchema.aggregate<{ _id: mongoose.Types.ObjectId; sentCount: number }>([
+          { $match: { _id: { $in: messageIds } } },
+          {
+            $project: {
+              sentCount: {
+                $size: {
+                  $filter: {
+                    input: "$messages",
+                    as: "m",
+                    cond: { $eq: ["$$m.status", "sent"] },
+                  },
+                },
+              },
+            },
+          },
+        ]);
+        sentCountsByChatId = new Map(
+          sentCounts.map((doc) => [doc._id.toString(), doc.sentCount]),
+        );
+      }
+
+      const enrichedRecords = records.map((r: any) => ({
+        ...r,
+        messageId: r?.messageId,
+        sentMessagesCount: r?.messageId
+          ? sentCountsByChatId.get(r.messageId.toString()) ?? 0
+          : 0,
+      }));
 
       // --- Attendance Stats ---
       const presentStaffIds = new Set<string>();
       let totalHours = 0;
 
-      records.forEach((record: any) => {
+      enrichedRecords.forEach((record: any) => {
         if (record.user) {
-          presentStaffIds.add(record.user._id.toString());
+          presentStaffIds.add(
+            (record.user._id ?? record.user).toString(),
+          );
         }
-        if (record?.punchOut) {
+        if (record?.punchOut && record?.punchIn) {
           totalHours +=
-            (record.punchOut.getTime() - record.punchIn.getTime()) / 3600000;
+            (new Date(record.punchOut).getTime() -
+              new Date(record.punchIn).getTime()) /
+            3_600_000;
         }
       });
 
       const presentCount = presentStaffIds.size;
 
-      // --- Leave Query ---
+      // --- Leave/WFH queries (unchanged; sanitize populate) ---
       const leaveQuery: Record<string, any> = {
         status: "Approved",
         leaveType: {
@@ -333,7 +375,7 @@ export default class AttendanceController {
             "Planned Leave",
             "Leave Without Pay",
             "Half Day",
-          ]
+          ],
         },
         $or: [
           { startDate: { $gte: startDate, $lte: endDate } },
@@ -352,28 +394,37 @@ export default class AttendanceController {
         ],
       };
 
-      // FIX: Use proper user reference based on role
       if (user.role === "staff") {
-        leaveQuery.user = new mongoose.Types.ObjectId(user.sub);
-        WFHQuery.user = new mongoose.Types.ObjectId(user.sub);
+        const uid = new mongoose.Types.ObjectId(user.sub);
+        leaveQuery.user = uid;
+        WFHQuery.user = uid;
       } else if (user.role === "admin" && userIds.length > 0) {
         leaveQuery.user = { $in: userIds };
         WFHQuery.user = { $in: userIds };
       } else if (user.role === "admin") {
-        // If no specific users selected, get all company users
         const companyUsers = await User.find({ company: user.company }, "_id");
-        const companyUserIds = companyUsers.map(u => u._id);
+        const companyUserIds = companyUsers.map((u) => u._id);
         leaveQuery.user = { $in: companyUserIds };
         WFHQuery.user = { $in: companyUserIds };
       }
 
-      const leaveData = await leaveSchema.find(leaveQuery).populate("user").lean();
-      const wfhData = await leaveSchema.find(WFHQuery).populate("user").lean();
+      const leaveData = await leaveSchema
+        .find(leaveQuery)
+        .populate({ path: "user", select: SAFE_USER_SELECT })
+        .lean();
 
-      const leaveCount = new Set(leaveData.map(leave => leave.user._id.toString())).size;
-      const wfhCount = new Set(wfhData.map(wfh => wfh.user._id.toString())).size;
+      const wfhData = await leaveSchema
+        .find(WFHQuery)
+        .populate({ path: "user", select: SAFE_USER_SELECT })
+        .lean();
 
-      // Calculate total users for stats
+      const leaveCount = new Set(
+        leaveData.map((leave: any) => leave.user._id.toString()),
+      ).size;
+      const wfhCount = new Set(
+        wfhData.map((wfh: any) => wfh.user._id.toString()),
+      ).size;
+
       let totalUsers: mongoose.Types.ObjectId[] = [];
       if (user.role === "staff") {
         totalUsers = [new mongoose.Types.ObjectId(user.sub)];
@@ -381,12 +432,15 @@ export default class AttendanceController {
         totalUsers = userIds;
       } else {
         const allCompanyUsers = await User.find({ company: user.company }, "_id");
-        totalUsers = allCompanyUsers.map(u => u._id);
+        totalUsers = allCompanyUsers.map((u) => u._id);
       }
 
       const totalUserCount = totalUsers.length;
-      const absentCount = Math.max(totalUserCount - presentCount - leaveCount - wfhCount, 0);
-      // user attendance group wise
+      const absentCount = Math.max(
+        totalUserCount - presentCount - leaveCount - wfhCount,
+        0,
+      );
+
       // --- Group attendance by user and date ---
       const usersAttendance: Record<
         string,
@@ -403,30 +457,36 @@ export default class AttendanceController {
         }
       > = {};
 
-      records.forEach((record: any) => {
-        const userId = record.user?._id?.toString() || record.user?.toString();
-        if (!userId) return;
+      enrichedRecords.forEach((record: any) => {
+        const uid =
+          record.user?._id?.toString() || record.user?.toString();
+        if (!uid) return;
 
         const dateKey = new Date(record.punchIn).toISOString().split("T")[0];
 
-        if (!usersAttendance[userId]) usersAttendance[userId] = {};
-        if (!usersAttendance[userId][dateKey]) usersAttendance[userId][dateKey] = { punchDetails: [] };
+        if (!usersAttendance[uid]) usersAttendance[uid] = {};
+        if (!usersAttendance[uid][dateKey])
+          usersAttendance[uid][dateKey] = { punchDetails: [] };
 
-        usersAttendance[userId][dateKey].punchDetails.push({
+        usersAttendance[uid][dateKey].punchDetails.push({
           attendanceId: record?._id,
           remarks: record?.remarks,
+          messages: record?.messages,
           punchIn: record?.punchIn,
           punchOut: record?.punchOut,
           punchInLocation: record?.punchInLocation,
           punchOutLocation: record?.punchOutLocation,
           lunchInInfo: record?.lunchInInfo,
           lunchOutInfo: record?.lunchOutInfo,
+          sentMessagesCount: record?.sentMessagesCount,
+          messageId: record?.messageId,
+
         });
       });
 
       return res.status(200).json({
         data: {
-          records,
+          records: enrichedRecords,
           usersAttendance,
           leaveData,
           wfhData,
@@ -440,7 +500,7 @@ export default class AttendanceController {
             absentCount,
             leaveCount,
             wfhCount,
-            totalUsers: totalUserCount
+            totalUsers: totalUserCount,
           },
         },
       });
@@ -451,30 +511,195 @@ export default class AttendanceController {
         .json({ message: "Internal server error", error: error.message });
     }
   }
-  static async addRemarksOnAttendance(req: AuthenticatedRequest, res: Response) {
+
+
+  static async addMessageOnAttendance(req: AuthenticatedRequest, res: Response) {
     try {
       const user = req.user;
-      if (!user?.sub || user?.role !== 'admin') {
+      if (!user?.sub) {
         return res.status(401).json({ message: "Authentication required" });
       }
-      const { _id, remarks } = req.body;
-      const result = await attendanceSchema.findOneAndUpdate(
-        {
-          _id: new mongoose.Types.ObjectId(_id)
-        },
-        {
-          remarks: remarks ? remarks : ''
-        }
-      );
-      if (!result) {
+
+      const { _id, content, files } = req.body;
+
+      // Validate required fields
+      if (!content) {
+        return res.status(400).json({ message: "Message content is required" });
+      }
+
+      const attendanceRecord = await attendanceSchema.findById(_id);
+      if (!attendanceRecord) {
         return res.status(404).json({ message: "Attendance record not found" });
       }
-      return res.status(200).json({ message: "Remarks updated successfully" });
+
+      // Create message object
+      const newMessage = {
+        _id: new mongoose.Types.ObjectId(),
+        content: content,
+        date: new Date(),
+        files: files && files.length > 0 ? files : [],
+        user: new mongoose.Types.ObjectId(user.sub),
+        status: "sent"
+      };
+
+      const messageId = attendanceRecord.messageId || new mongoose.Types.ObjectId();
+
+      // Use aggregation pipeline for update to avoid operator conflicts
+      const result = await attendanceChatSchema.findOneAndUpdate(
+        { _id: messageId },
+        [
+          {
+            $set: {
+              company: { $ifNull: ["$company", attendanceRecord.company] },
+              messages: {
+                $cond: {
+                  if: { $isArray: "$messages" },
+                  then: { $concatArrays: ["$messages", [newMessage]] },
+                  else: [newMessage]
+                }
+              }
+            }
+          }
+        ],
+        {
+          new: true,
+          upsert: true,
+          setDefaultsOnInsert: true
+        }
+      );
+
+      // If we created a new AttendanceChat, update the attendance record with the messageId
+      if (!attendanceRecord.messageId) {
+        await attendanceSchema.findByIdAndUpdate(
+          _id,
+          { messageId: result._id }
+        );
+      }
+
+      return res.status(200).json({
+        message: "Message added successfully",
+        data: result
+      });
     } catch (error: any) {
       console.error(error);
       return res
         .status(500)
         .json({ message: "Internal server error", error: error.message });
+    }
+  }
+  static async getMessage(req: AuthenticatedRequest, res: Response) {
+    try {
+      const user = req.user
+      if (!user?.sub) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const { messageId } = req.query as any
+      const result: any = await attendanceChatSchema.find({ _id: new mongoose.Types.ObjectId(messageId), company: new mongoose.Types.ObjectId(user.company) }).populate([
+        {
+          path: "messages.user",
+          model: User,
+          select: SAFE_USER_SELECT,
+        },
+      ])
+      if (!result) {
+        return res.status(400).send("Data to found!")
+      }
+      return res.status(200).json({ data: result || [] })
+    } catch (error) {
+      console.log("Error", error)
+      return res.status(500).send("Something went wrong!")
+    }
+  }
+  static async updateMessageStatus(req: AuthenticatedRequest, res: Response) {
+    try {
+      const user = req.user;
+      if (!user?.sub) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+
+      const { messageId, subMessageId } = req.body as any;
+      if (!messageId || !subMessageId) {
+        return res.status(400).json({
+          message: "Message ID and Sub Message ID are required"
+        });
+      }
+
+      let subMessageIds: string[] = [];
+
+      if (Array.isArray(subMessageId)) {
+        subMessageIds = subMessageId;
+      } else if (typeof subMessageId === 'string') {
+        // Handle comma-separated string or single ID
+        subMessageIds = subMessageId.split(',').map(id => id.trim()).filter(id => id);
+      } else {
+        return res.status(400).json({
+          message: "Sub Message ID must be a string or array of strings"
+        });
+      }
+
+      // Validate ObjectId format for all IDs
+      const invalidIds = subMessageIds.filter(id => !mongoose.Types.ObjectId.isValid(id));
+      if (invalidIds.length > 0) {
+        return res.status(400).json({
+          message: `Invalid Sub Message ID format: ${invalidIds.join(', ')}`
+        });
+      }
+
+      if (subMessageIds.length === 0) {
+        return res.status(400).json({
+          message: "No valid Sub Message IDs provided"
+        });
+      }
+
+      // Convert to ObjectId array
+      const subMessageObjectIds = subMessageIds.map(id => new mongoose.Types.ObjectId(id));
+
+      // Update multiple messages status to "read" using bulk update
+      const result = await attendanceChatSchema.findOneAndUpdate(
+        {
+          _id: new mongoose.Types.ObjectId(messageId),
+          "messages._id": { $in: subMessageObjectIds }
+        },
+        {
+          $set: {
+            "messages.$[elem].status": "read"
+          }
+        },
+        {
+          arrayFilters: [
+            { "elem._id": { $in: subMessageObjectIds } }
+          ],
+          new: true,
+          runValidators: true
+        }
+      );
+
+      if (!result) {
+        return res.status(404).json({
+          message: "Message chat not found or no matching sub-messages found"
+        });
+      }
+
+      // Get the updated messages for response
+      const updatedMessages = result.messages.filter(msg =>
+        subMessageObjectIds.some(id => id.equals(msg._id))
+      );
+
+      return res.status(200).json({
+        message: `${updatedMessages.length} message(s) status updated successfully`,
+        data: {
+          chat: result,
+          updatedCount: updatedMessages.length,
+          updatedMessages: updatedMessages
+        }
+      });
+
+    } catch (error: any) {
+      console.log("Error updating message status:", error);
+      return res.status(500).json({
+        message: "Internal server error",
+        error: error.message
+      });
     }
   }
 
