@@ -443,7 +443,6 @@ export default class LeaveController {
       if (!emails) {
         return res.status(400).json({ message: 'No recipients provided' });
       }
-
       if (!fileUrls) {
         return res.status(400).json({ message: 'No files provided' });
       }
@@ -453,34 +452,33 @@ export default class LeaveController {
         month: 'long',
         day: 'numeric'
       });
-let files = [];
+      let files = [];
 
-try {
-  if (typeof fileUrls === "string") {
-    files = JSON.parse(fileUrls); 
-  } else if (Array.isArray(fileUrls)) {
-    files = fileUrls.flatMap(f => {
-      if (typeof f === "string") {
-        try {
-          return JSON.parse(f);
-        } catch {
-          return [];
+      try {
+        if (typeof fileUrls === "string") {
+          files = JSON.parse(fileUrls);
+        } else if (Array.isArray(fileUrls)) {
+          files = fileUrls.flatMap(f => {
+            if (typeof f === "string") {
+              try {
+                return JSON.parse(f);
+              } catch {
+                return [];
+              }
+            }
+            return f;
+          });
+        } else {
+          files = [];
         }
+      } catch (err) {
+        console.error("Error parsing fileUrls:", err);
+        files = [];
       }
-      return f;
-    });
-  } else {
-    files = [];
-  }
-} catch (err) {
-  console.error("Error parsing fileUrls:", err);
-  files = [];
-}
 
-
-const fileListHtml = files
-  .map(
-    (file:any, index:any) => `
+      const fileListHtml = files
+        .map(
+          (file: any, index: any) => `
     <div style="margin: 10px 0; padding: 12px; background-color: #f9fafb; border-left: 4px solid #4f46e5; border-radius: 4px;">
       <p style="color: #4b5563;">File Name: ${file.name || "N/A"}</p>
       <a href="${file.url || "#"}" target="_blank" style="color: #4f46e5; text-decoration: none; word-break: break-all;">
@@ -488,8 +486,8 @@ const fileListHtml = files
       </a>
     </div>
   `
-  )
-  .join("");
+        )
+        .join("");
 
 
 
