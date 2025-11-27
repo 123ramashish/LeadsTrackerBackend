@@ -6,8 +6,6 @@ import attendanceSchema from "../DataBase/Schema/attendance.schema";
 import User from "../DataBase/Schema/user.schema";
 import leaveSchema from "../DataBase/Schema/leave.schema";
 import attendanceChatSchema from "../DataBase/Schema/attendanceChat.schema";
-
-// Extend Express Request to include `user`
 interface AuthenticatedRequest extends Request {
   user?: any & {
     _id: mongoose.Types.ObjectId;
@@ -612,54 +610,54 @@ export default class AttendanceController {
   //     return res.status(500).send("Something went wrong!")
   //   }
   // }
-static async getMessage(req: AuthenticatedRequest, res: Response) {
-  try {
-    const user = req.user;
-console.log("api hit")
-    if (!user?.sub) {
-      return res.status(401).json({ message: "Authentication required" });
-    }
-
-    const { messageId } = req.query as any;
-
-    const chat = await attendanceChatSchema
-      .findOne({
-        _id: new mongoose.Types.ObjectId(messageId),
-        company: new mongoose.Types.ObjectId(user.company)
-      })
-      .populate([
-        {
-          path: "messages.user",
-          model: User,
-          select: SAFE_USER_SELECT,
-        },
-      ]);
-
-    if (!chat) {
-      return res.status(400).send("Data not found!");
-    }
-
-    const loggedInUserId = user.sub.toString();
-    const returnChat = JSON.parse(JSON.stringify(chat));
-
-    let needUpdate = false;
-    chat.messages.forEach(msg => {
-      console.log("msg.user",msg.user)
-      if (msg.user._id.toString() !== loggedInUserId.toString() && msg.status !== "read") {
-        msg.status = "read";
-        needUpdate = true;
+  static async getMessage(req: AuthenticatedRequest, res: Response) {
+    try {
+      const user = req.user;
+      console.log("api hit")
+      if (!user?.sub) {
+        return res.status(401).json({ message: "Authentication required" });
       }
-    });
 
-    if (needUpdate) chat.save(); 
+      const { messageId } = req.query as any;
 
-    return res.status(200).json({ data: returnChat });
+      const chat = await attendanceChatSchema
+        .findOne({
+          _id: new mongoose.Types.ObjectId(messageId),
+          company: new mongoose.Types.ObjectId(user.company)
+        })
+        .populate([
+          {
+            path: "messages.user",
+            model: User,
+            select: SAFE_USER_SELECT,
+          },
+        ]);
 
-  } catch (error) {
-    console.log("Error", error);
-    return res.status(500).send("Something went wrong!");
+      if (!chat) {
+        return res.status(400).send("Data not found!");
+      }
+
+      const loggedInUserId = user.sub.toString();
+      const returnChat = JSON.parse(JSON.stringify(chat));
+
+      let needUpdate = false;
+      chat.messages.forEach(msg => {
+        console.log("msg.user", msg.user)
+        if (msg.user._id.toString() !== loggedInUserId.toString() && msg.status !== "read") {
+          msg.status = "read";
+          needUpdate = true;
+        }
+      });
+
+      if (needUpdate) chat.save();
+
+      return res.status(200).json({ data: returnChat });
+
+    } catch (error) {
+      console.log("Error", error);
+      return res.status(500).send("Something went wrong!");
+    }
   }
-}
 
 
   static async updateMessageStatus(req: AuthenticatedRequest, res: Response) {
@@ -755,4 +753,398 @@ console.log("api hit")
     }
   }
 
+  static async getReportWithFields(req: AuthenticatedRequest, res: Response) {
+    try {
+      const user = req.user;
+      if (!user?.sub) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+
+      const { users, fromDate, toDate, fields } = req.body || req.query;
+
+
+      const localTimeZone = DateTime.local().zoneName;
+
+      const startDate: Date = fromDate
+        ? DateTime.fromISO(fromDate, { zone: localTimeZone })
+          .startOf('day')
+          .toJSDate()
+        : DateTime.now()
+          .setZone(localTimeZone)
+          .startOf('day')
+          .toJSDate();
+
+      const endDate: Date = toDate
+        ? DateTime.fromISO(toDate, { zone: localTimeZone })
+          .endOf('day')
+          .toJSDate()
+        : DateTime.now().setZone(localTimeZone).endOf('day').toJSDate();
+
+      const query: Record<string, any> = {
+        punchIn: { $gte: startDate, $lte: endDate },
+        company: user.company,
+      };
+
+      let userIds: mongoose.Types.ObjectId[] = [];
+
+      if (user.role === "staff") {
+        query.user = new mongoose.Types.ObjectId(user.sub);
+      } else if (user.role === "admin") {
+        if (!users || users.length === 0) {
+          const allUsers = await User.find({ company: user.company }, "_id");
+          userIds = allUsers.map((u) => u._id);
+        } else {
+          let arrayOfUsers = Array.isArray(users) ? users : users.split(',')
+          userIds = arrayOfUsers
+            .map((id: string) => new mongoose.Types.ObjectId(id));
+        }
+
+        if (userIds.length > 0) {
+          query.user = { $in: userIds };
+        }
+      } else {
+        return res.status(403).json({ message: "Unauthorized access" });
+      }
+
+      // Build projection based on fields
+      let projection: Record<string, number> = {
+        _id: 1,
+        user: 1,
+        company: 1,
+        punchIn: 1,
+        punchOut: 1, // Always need for calculations
+      };
+      let Arrayfields = Array.isArray(fields) ? fields : fields.split(',')
+      const includeAllFields = !Arrayfields || !Array.isArray(Arrayfields) || Arrayfields.length === 0;
+      // User populate projection for name, email, phone
+      let userSelectFields = SAFE_USER_SELECT;
+
+      if (!includeAllFields) {
+        // Track which nested objects we need
+        let needsLunchInInfo = false;
+        let needsLunchOutInfo = false;
+        let needsUserFields = new Set<string>();
+
+        Arrayfields.forEach((field: string) => {
+          switch (field) {
+            // User fields - will be handled in populate
+            case "name":
+              needsUserFields.add("name");
+              break;
+            case "email":
+              needsUserFields.add("email");
+              break;
+            case "phone":
+              needsUserFields.add("phone");
+              break;
+
+            // Attendance fields
+            case "date":
+              // Date is calculated from punchIn, already included
+              break;
+            case "punchIn":
+              projection.punchIn = 1;
+              break;
+            case "punchOut":
+              projection.punchOut = 1;
+              break;
+            case "punchInLocation":
+              projection.punchInLocation = 1;
+              break;
+            case "punchOutLocation":
+              projection.punchOutLocation = 1;
+              break;
+
+            // Calculated fields - need lunch info
+            case "hoursWorked":
+            case "totalLunch":
+            case "productive":
+            case "status":
+              // These are calculated, no projection needed
+              break;
+
+            // Lunch fields
+            case "lunchIn":
+            case "lunchInLocation":
+              needsLunchInInfo = true;
+              break;
+            case "lunchOut":
+            case "lunchOutLocation":
+              needsLunchOutInfo = true;
+              break;
+
+            default:
+              projection[field] = 1;
+          }
+        });
+
+        // Add nested objects if any of their fields were requested
+        if (needsLunchInInfo) {
+          projection.lunchInInfo = 1;
+        }
+        if (needsLunchOutInfo) {
+          projection.lunchOutInfo = 1;
+        }
+
+        // Build user select string for populate
+        if (needsUserFields.size > 0) {
+          userSelectFields = Array.from(needsUserFields).join(" ");
+        }
+      } else {
+        // If no fields specified, fetch everything
+        projection = {};
+        userSelectFields = SAFE_USER_SELECT;
+      }
+
+      console.log("projection", projection);
+      console.log("userSelectFields", userSelectFields);
+
+      const attendanceRecords = await attendanceSchema
+        .find(query, Object.keys(projection).length > 0 ? projection : undefined)
+        .populate({ path: "user", select: userSelectFields })
+        .sort({ user: 1, punchIn: -1 })
+        .lean();
+
+      if (!attendanceRecords || attendanceRecords.length === 0) {
+        return res.status(200).json({
+          success: true,
+          message: "No records found for the specified criteria",
+          data: {
+            records: [],
+            summary: {
+              totalRecords: 0,
+              totalUsers: 0,
+              totalDays: 0,
+            },
+            dateRange: {
+              from: startDate,
+              to: endDate,
+            },
+          },
+        });
+      }
+
+      // Helper function to calculate time difference in hours
+
+      const calculateHours = (start: Date | null | undefined, end: Date | null | undefined): number => {
+        if (!start || !end) return 0;
+
+        try {
+          // Convert the start and end Date objects to Luxon DateTime objects
+          const startTime = DateTime.fromJSDate(new Date(start), { zone: localTimeZone });
+          const endTime = DateTime.fromJSDate(new Date(end), { zone: localTimeZone });
+
+          // Check if the DateTime objects are valid
+          if (!startTime.isValid || !endTime.isValid) return 0;
+
+          // Calculate the difference between start and end times
+          const diff = endTime.diff(startTime, ["hours", "minutes"]);
+
+          // Get the difference in hours and minutes
+          const hours = diff.hours.toString();
+          const minutes = diff.minutes.toFixed(0).toString();
+          const time = Number(hours.concat('.').concat(minutes))
+          return Math.max(0, time)
+        } catch (error) {
+          console.error("Error calculating hours:", error);
+          return 0;
+        }
+      };
+
+      // Helper function to determine status
+      const determineStatus = (punchIn: Date | undefined, punchOut: Date | undefined): string => {
+        if (!punchIn) return "Absent";
+        if (punchIn && !punchOut) return "Present";
+        if (punchIn && punchOut) return "Completed";
+        return "Unknown";
+      };
+
+      // Format records with calculations
+      const formattedRecords = attendanceRecords.map((record: any) => {
+        const formattedRecord: Record<string, any> = {
+          _id: record._id,
+        };
+
+        // Extract lunch times safely
+        const lunchInTime = record.lunchInInfo?.time;
+        const lunchOutTime = record.lunchOutInfo?.time;
+
+        // Calculate time metrics (always calculated for summaries)
+        const totalWorkingHours = calculateHours(record.punchIn, record.punchOut);
+        const totalLunchTime = calculateHours(lunchInTime, lunchOutTime);
+        const productiveHours = Math.max(0, totalWorkingHours - totalLunchTime);
+        const status = determineStatus(record.punchIn, record.punchOut);
+
+        if (includeAllFields) {
+          // Include all available fields
+          formattedRecord.user = record.user;
+          formattedRecord.date = DateTime.fromJSDate(record.punchIn, { zone: localTimeZone }).toISODate();
+
+          if (record.user?.name !== undefined) formattedRecord.name = record.user.name;
+          if (record.user?.email !== undefined) formattedRecord.email = record.user.email;
+          if (record.user?.phone !== undefined) formattedRecord.phone = record.user.phone;
+
+          if (record.punchIn !== undefined) formattedRecord.punchIn = record.punchIn;
+          if (record.punchOut !== undefined) formattedRecord.punchOut = record.punchOut;
+          if (record.punchInLocation !== undefined) formattedRecord.punchInLocation = record.punchInLocation;
+          if (record.punchOutLocation !== undefined) formattedRecord.punchOutLocation = record.punchOutLocation;
+
+          if (lunchInTime !== undefined) formattedRecord.lunchIn = lunchInTime;
+          if (lunchOutTime !== undefined) formattedRecord.lunchOut = lunchOutTime;
+          if (record.lunchInInfo?.location !== undefined) formattedRecord.lunchInLocation = record.lunchInInfo.location;
+          if (record.lunchOutInfo?.location !== undefined) formattedRecord.lunchOutLocation = record.lunchOutInfo.location;
+
+          formattedRecord.hoursWorked = parseFloat(totalWorkingHours.toFixed(2));
+          formattedRecord.totalLunch = parseFloat(totalLunchTime.toFixed(2));
+          formattedRecord.productive = parseFloat(productiveHours.toFixed(2));
+          formattedRecord.status = status;
+
+          // Keep legacy field names for backward compatibility
+          formattedRecord.totalWorkingHours = formattedRecord.hoursWorked;
+          formattedRecord.totalLunchTime = formattedRecord.totalLunch;
+          formattedRecord.productiveHours = formattedRecord.productive;
+        } else {
+          // Include only requested fields
+          const fieldMapping: Record<string, () => void> = {
+            user: () => { formattedRecord.user = record.user; },
+            name: () => { if (record.user?.name !== undefined) formattedRecord.name = record.user.name; },
+            email: () => { if (record.user?.email !== undefined) formattedRecord.email = record.user.email; },
+            phone: () => { if (record.user?.phone !== undefined) formattedRecord.phone = record.user.phone; },
+            date: () => { formattedRecord.date = DateTime.fromJSDate(record.punchIn, { zone: localTimeZone }).toISODate(); },
+            punchIn: () => { if (record.punchIn !== undefined) formattedRecord.punchIn = record.punchIn; },
+            punchOut: () => { if (record.punchOut !== undefined) formattedRecord.punchOut = record.punchOut; },
+            punchInLocation: () => { if (record.punchInLocation !== undefined) formattedRecord.punchInLocation = record.punchInLocation; },
+            punchOutLocation: () => { if (record.punchOutLocation !== undefined) formattedRecord.punchOutLocation = record.punchOutLocation; },
+            lunchIn: () => { if (lunchInTime !== undefined) formattedRecord.lunchIn = lunchInTime; },
+            lunchOut: () => { if (lunchOutTime !== undefined) formattedRecord.lunchOut = lunchOutTime; },
+            lunchInLocation: () => { if (record.lunchInInfo?.location !== undefined) formattedRecord.lunchInLocation = record.lunchInInfo.location; },
+            lunchOutLocation: () => { if (record.lunchOutInfo?.location !== undefined) formattedRecord.lunchOutLocation = record.lunchOutInfo.location; },
+            hoursWorked: () => { formattedRecord.hoursWorked = parseFloat(totalWorkingHours.toFixed(2)); },
+            totalLunch: () => { formattedRecord.totalLunch = parseFloat(totalLunchTime.toFixed(2)); },
+            productive: () => { formattedRecord.productive = parseFloat(productiveHours.toFixed(2)); },
+            status: () => { formattedRecord.status = status; },
+          };
+
+          Arrayfields?.forEach((field: string) => {
+            if (fieldMapping[field]) {
+              fieldMapping[field]();
+            } else if (record[field] !== undefined) {
+              formattedRecord[field] = record[field];
+            }
+          });
+
+          // Always include calculated fields for summaries (internal use)
+          formattedRecord.totalWorkingHours = parseFloat(totalWorkingHours.toFixed(2));
+          formattedRecord.totalLunchTime = parseFloat(totalLunchTime.toFixed(2));
+          formattedRecord.productiveHours = parseFloat(productiveHours.toFixed(2));
+        }
+
+        return formattedRecord;
+      });
+
+      // Calculate per-user summaries (all days for each user)
+      const userSummaries: Record<string, any> = {};
+      formattedRecords.forEach((record) => {
+        const userId = record.user?._id?.toString() || record._id.toString();
+
+        if (!userSummaries[userId]) {
+          userSummaries[userId] = {
+            user: record.user,
+            totalWorkingHours: 0,
+            totalLunchTime: 0,
+            productiveHours: 0,
+            daysWorked: 0,
+            records: [],
+          };
+        }
+
+        userSummaries[userId].totalWorkingHours += record.totalWorkingHours || 0;
+        userSummaries[userId].totalLunchTime += record.totalLunchTime || 0;
+        userSummaries[userId].productiveHours += record.productiveHours || 0;
+        userSummaries[userId].daysWorked += 1;
+        userSummaries[userId].records.push(record);
+      });
+
+      // Format user summaries
+      const userSummariesArray = Object.values(userSummaries).map((summary: any) => ({
+        user: summary.user,
+        totalWorkingHours: parseFloat(summary.totalWorkingHours.toFixed(2)),
+        totalLunchTime: parseFloat(summary.totalLunchTime.toFixed(2)),
+        productiveHours: parseFloat(summary.productiveHours.toFixed(2)),
+        daysWorked: summary.daysWorked,
+        averageWorkingHours: parseFloat((summary.totalWorkingHours / summary.daysWorked).toFixed(2)),
+        averageLunchTime: parseFloat((summary.totalLunchTime / summary.daysWorked).toFixed(2)),
+        averageProductiveHours: parseFloat((summary.productiveHours / summary.daysWorked).toFixed(2)),
+      }));
+
+      // Sort user summaries by user name
+      userSummariesArray.sort((a, b) => {
+        const nameA = a.user?.name?.toLowerCase() || '';
+        const nameB = b.user?.name?.toLowerCase() || '';
+        return nameA.localeCompare(nameB);
+      });
+
+      // Calculate overall summary (all users, all days)
+      const overallSummary = {
+        totalWorkingHours: parseFloat(
+          formattedRecords.reduce((sum, r) => sum + (r.totalWorkingHours || 0), 0).toFixed(2)
+        ),
+        totalLunchTime: parseFloat(
+          formattedRecords.reduce((sum, r) => sum + (r.totalLunchTime || 0), 0).toFixed(2)
+        ),
+        productiveHours: parseFloat(
+          formattedRecords.reduce((sum, r) => sum + (r.productiveHours || 0), 0).toFixed(2)
+        ),
+        totalRecords: formattedRecords.length,
+        totalUsers: Object.keys(userSummaries).length,
+        averageWorkingHoursPerDay: parseFloat(
+          (formattedRecords.reduce((sum, r) => sum + (r.totalWorkingHours || 0), 0) / formattedRecords.length).toFixed(2)
+        ),
+        averageLunchTimePerDay: parseFloat(
+          (formattedRecords.reduce((sum, r) => sum + (r.totalLunchTime || 0), 0) / formattedRecords.length).toFixed(2)
+        ),
+        averageProductiveHoursPerDay: parseFloat(
+          (formattedRecords.reduce((sum, r) => sum + (r.productiveHours || 0), 0) / formattedRecords.length).toFixed(2)
+        ),
+      };
+
+      // Sort formatted records by user name first, then by date
+      formattedRecords.sort((a, b) => {
+        const nameA = a.user?.name?.toLowerCase() || a.name?.toLowerCase() || '';
+        const nameB = b.user?.name?.toLowerCase() || b.name?.toLowerCase() || '';
+        const nameCompare = nameA.localeCompare(nameB);
+
+        if (nameCompare !== 0) return nameCompare;
+
+        // If same user, sort by date
+        const dateA = a.date || DateTime.fromJSDate(a.punchIn, { zone: localTimeZone }).toISODate();
+        const dateB = b.date || DateTime.fromJSDate(b.punchIn, { zone: localTimeZone }).toISODate();
+        return dateA.localeCompare(dateB);
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: "Report retrieved successfully",
+        data: {
+          records: formattedRecords,
+          userSummaries: userSummariesArray,
+          overallSummary: overallSummary,
+          dateRange: {
+            from: startDate,
+            to: endDate,
+            fromISO: DateTime.fromJSDate(startDate, { zone: localTimeZone }).toISODate(),
+            toISO: DateTime.fromJSDate(endDate, { zone: localTimeZone }).toISODate(),
+          },
+        },
+      });
+
+    } catch (error: any) {
+      console.error("Error fetching report:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Internal server error",
+        error: error.message,
+      });
+    }
+  }
 }
