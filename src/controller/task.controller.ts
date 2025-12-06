@@ -7,6 +7,7 @@ import { Notification_Create } from "../utils/notificationUtils";
 import { sendPushNotification } from "../helper/notifications";
 import Notification from "../DataBase/Schema/notification.schema";
 import { stat } from "fs";
+import RepeatTask from "../DataBase/Schema/repeatTask.schema";
 interface AuthRequest extends Request {
   user?: {
     sub: string;
@@ -321,7 +322,7 @@ export default class TaskController {
         .limit(parseInt(limit));
 
       const total = await Task.countDocuments(filter);
-      return res.status(200).json({ total,totalPages:Math.round(total/limit), count: tasks.length, tasks });
+      return res.status(200).json({ total, totalPages: Math.round(total / limit), count: tasks.length, tasks });
     } catch (error: any) {
       console.error("Error getting tasks:", error.message);
       return res
@@ -334,7 +335,7 @@ export default class TaskController {
   async getTaskAmountTime(req: Request, res: Response) {
     try {
       const { assignees, company } = req.query as {
-        assignees?: any;
+        assignees?: string;
         company?: string;
       };
 
@@ -342,36 +343,36 @@ export default class TaskController {
         return res.status(400).json({ message: "Company ID is required" });
       }
 
-      let assigneeIds: string[] = [];
-      if (assignees) {
-        const arrayFormat = assignees.split(",");
+      let assigneeIds: mongoose.Types.ObjectId[] = [];
 
-        arrayFormat.forEach((id: string) => {
-          assigneeIds.push(id.trim());
-        });
-      }
-      else {
+      if (assignees) {
+        // Split by comma and trim each ID
+        const idArray = assignees.split(',').map(id => id.trim()).filter(id => id);
+        assigneeIds = idArray.map(id => new mongoose.Types.ObjectId(id));
+      } else {
         // If not provided, take all users from that company
         const users = await User.find({ company }, "_id");
-        assigneeIds = users.map((u) => u._id.toString());
+        assigneeIds = users.map((u) => u._id);
       }
-      // Fetch tasks
+
+      // Fetch tasks - Fixed the query logic
       const taskAmount = await Task.find({
         company: new mongoose.Types.ObjectId(company),
-        assignee: { $in: assigneeIds.map((id) => new mongoose.Types.ObjectId(id)) },
+        assignee: { $in: assigneeIds },
         status: {
           $elemMatch: {
-            user: { $in: assigneeIds.map((id) => new mongoose.Types.ObjectId(id)) },
-            status: { $nin: ["cancel", "completed"] },
-          },
-        },
-      }).populate("assignee", "_id name role").populate("userEstimatedTime.user", "_id name role")
+            user: { $in: assigneeIds },
+            status: { $nin: ["cancel", "completed"] }
+          }
+        }
+      })
+        .populate("assignee", "_id name role")
+        .populate("userEstimatedTime.user", "_id name role")
         .populate("status.user", "_id name role")
         .populate("dueDate.user", "_id name role")
         .populate("startDate.user", "_id name role")
         .populate("endDate.user", "_id name role")
-        .populate("createdBy", "_id name role")
-
+        .populate("createdBy", "_id name role");
 
       return res.status(200).json({ taskAmount });
     } catch (error: any) {
@@ -381,7 +382,6 @@ export default class TaskController {
         .json({ message: "Internal Server Error", error: error.message });
     }
   }
-
 
   async getTaskById(req: AuthRequest, res: Response) {
     try {
@@ -409,10 +409,10 @@ export default class TaskController {
         order = "desc",
         dateRange,
         entryDoneRange,
+        estimatedTime,
         noOfEntryRange,
         individualBucket,
       } = req.query as any;
-
       const _status = safeNormalize(status);
       const _priority = safeNormalize(priority);
       const _createdBy = user.role === "admin" ? null : safeNormalize(user?.sub);
@@ -423,12 +423,12 @@ export default class TaskController {
       const _entryDoneRange = safeNormalize(entryDoneRange);
       const _noOfEntryRange = safeNormalize(noOfEntryRange);
       const _individualBucket = safeNormalize(individualBucket);
-
+      const _estimatedTime = JSON.parse(estimatedTime);
       const filter: any = {
         assignee: { $in: [user.sub] },
       };
       const localTimeZone = DateTime.local().zoneName;
-
+      console.log("entry", _noOfEntryRange, _entryDoneRange)
       //  Fix: status filter should match array elements where both user and status match
       let statusList: string[] = [];
       if (_status) {
@@ -502,22 +502,22 @@ export default class TaskController {
 
       if (_entryDoneRange) {
         const [min, max] = _entryDoneRange.split(",").map(Number);
+
         if (!isNaN(min) && !isNaN(max)) {
-          andConditions.push({ entryDone: { $gte: min, $lte: max } });
+          filter.entryDone = { $gte: min, $lte: max };
         }
       }
 
       if (_noOfEntryRange) {
         const [min, max] = _noOfEntryRange.split(",").map(Number);
         if (!isNaN(min) && !isNaN(max)) {
-          andConditions.push({ noOfEntry: { $gte: min, $lte: max } });
+          filter.noOfEntry = { $gte: min, $lte: max };
         }
       }
 
-      if (andConditions.length > 0) {
-        filter.$and = andConditions;
-      }
-
+      // if (andConditions.length > 0) {
+      //   filter.$and = andConditions;
+      // }
       //  Individual bucket logic
       if (_individualBucket !== null) {
         const isIndividual = _individualBucket === "true";
@@ -525,7 +525,11 @@ export default class TaskController {
           $elemMatch: { user: user.sub, individual: isIndividual },
         };
       }
-
+      if (_estimatedTime) {
+        filter.estimatedTime = {
+          value: Number(_estimatedTime.value), unit: _estimatedTime.unit,
+        };
+      }
       //  Sorting
       const sort: any = { [sortBy]: order === "asc" ? 1 : -1 };
       //  DB Query
@@ -557,14 +561,14 @@ export default class TaskController {
           return { ...task, userStatus: currentStatus, sortValue };
         })
         .filter((task: any) => !_status || statusList.includes(task.userStatus));
-        const totalCount = await Task.countDocuments(filter); 
+      const totalCount = await Task.countDocuments(filter);
 
       const sortedTasks = userTasks
         .sort((a: any, b: any) => a.sortValue - b.sortValue)
         .slice(parseInt(page), parseInt(page) + parseInt(limit));
       return res.status(200).json({
         count: totalCount,
-        totalPages:Math.round(totalCount/limit),
+        totalPages: Math.round(totalCount / limit),
         tasks: sortedTasks.map(({ sortValue, ...rest }) => rest),
       });
     } catch (error: any) {
@@ -972,15 +976,14 @@ export default class TaskController {
 
       // Build dynamic update object
       const updateData: Record<string, any> = {};
-
       if (rest.entryTime) {
         updateData.entryTime = rest.entryTime;
       }
       if (rest.entryDone !== undefined) {
-        updateData.entryDone = rest.entryDone;
+        updateData.entryDone = Number(rest.entryDone);
       }
       if (rest.NOE !== undefined) {
-        updateData.noOfEntry = rest.NOE;
+        updateData.noOfEntry = Number(rest.NOE);
       }
       if (rest.description) {
         updateData.taskDescription = rest.description;
@@ -1486,78 +1489,78 @@ export default class TaskController {
       return res.status(500).json({ message: "Server error", error: error.message });
     }
   }
-async getReport(req: AuthRequest, res: Response) {
-  try {
-    const user: any = req.user;
-    const normalize = (val: any) =>
-      val && val !== "null" && val !== "undefined" && val !== "" ? val : null;
+  async getReport(req: AuthRequest, res: Response) {
+    try {
+      const user: any = req.user;
+      const normalize = (val: any) =>
+        val && val !== "null" && val !== "undefined" && val !== "" ? val : null;
 
-    // Extract + normalize query params
-    const {
-      assignee,
-      company,
-      dateRange,
-      individualBucket,
-    } = req.query as any;
-    
-    // const _assignee = normalize(assignee);
-    // const _company = normalize(company);
-    // const _dateRange = normalize(dateRange);
-    // const _individualBucket = normalize(individualBucket);
+      // Extract + normalize query params
+      const {
+        assignee,
+        company,
+        dateRange,
+        individualBucket,
+      } = req.query as any;
 
-    const filter: any = {};
-    const localTimeZone = DateTime.local().zoneName;
+      // const _assignee = normalize(assignee);
+      // const _company = normalize(company);
+      // const _dateRange = normalize(dateRange);
+      // const _individualBucket = normalize(individualBucket);
 
-    // Company filter
-    
-    filter.company = new mongoose.Types.ObjectId(company || user.company);
+      const filter: any = {};
+      const localTimeZone = DateTime.local().zoneName;
 
+      // Company filter
 
-if (assignee) {
-  const assigneeIds = assignee
-    .split(",")
-    .map((id: string) => id.trim());
-
-  // Match tasks where assignee array contains any of the given IDs
-  filter.assignee = { $in: assigneeIds };
-} else {
-  const users = await User.find({
-    company: new mongoose.Types.ObjectId(user.company),
-  });
-
-  if (users.length === 0) {
-    return res
-      .status(400)
-      .json({ message: "No users available to assign the task" });
-  }
-
-  filter.assignee = {
-    $in: users.map((u) => u._id.toString()),
-  };
-}
+      filter.company = new mongoose.Types.ObjectId(company || user.company);
 
 
-    // Date range filter
-if (dateRange) {
-  const [start, end] = dateRange.split(",");
-  if (start && end) {
-    const startDt = DateTime.fromISO(start).setZone(localTimeZone).startOf("day");
-    const endDt = DateTime.fromISO(end).setZone(localTimeZone).endOf("day");
-    const startDateUTC = startDt.toUTC().toJSDate();
-    const endDateUTC = endDt.toUTC().toJSDate();
+      if (assignee) {
+        const assigneeIds = assignee
+          .split(",")
+          .map((id: string) => id.trim());
 
-    filter.$or = [
-      { taskDate: { $gte: startDateUTC, $lte: endDateUTC } },
-      { "dueDate.date": { $gte: startDateUTC, $lte: endDateUTC } },
-      { "startDate.date": { $gte: startDateUTC, $lte: endDateUTC } },
-      { "endDate.date": { $gte: startDateUTC, $lte: endDateUTC } },
-    ];
-  }
-}
+        // Match tasks where assignee array contains any of the given IDs
+        filter.assignee = { $in: assigneeIds };
+      } else {
+        const users = await User.find({
+          company: new mongoose.Types.ObjectId(user.company),
+        });
+
+        if (users.length === 0) {
+          return res
+            .status(400)
+            .json({ message: "No users available to assign the task" });
+        }
+
+        filter.assignee = {
+          $in: users.map((u) => u._id.toString()),
+        };
+      }
 
 
-    // Individual bucket filter - FIXED LOGIC
-   if (individualBucket !== null && assignee) {
+      // Date range filter
+      if (dateRange) {
+        const [start, end] = dateRange.split(",");
+        if (start && end) {
+          const startDt = DateTime.fromISO(start).setZone(localTimeZone).startOf("day");
+          const endDt = DateTime.fromISO(end).setZone(localTimeZone).endOf("day");
+          const startDateUTC = startDt.toUTC().toJSDate();
+          const endDateUTC = endDt.toUTC().toJSDate();
+
+          filter.$or = [
+            { taskDate: { $gte: startDateUTC, $lte: endDateUTC } },
+            { "dueDate.date": { $gte: startDateUTC, $lte: endDateUTC } },
+            { "startDate.date": { $gte: startDateUTC, $lte: endDateUTC } },
+            { "endDate.date": { $gte: startDateUTC, $lte: endDateUTC } },
+          ];
+        }
+      }
+
+
+      // Individual bucket filter - FIXED LOGIC
+      if (individualBucket !== null && assignee) {
         filter.individualBucket = {
           $elemMatch: {
             user: { $in: assignee },
@@ -1568,109 +1571,131 @@ if (dateRange) {
         filter["individualBucket.individual"] = individualBucket === "true";
       } else {
         filter["individualBucket.individual"] = false;
-      }    
-    // Query DB with the fixed filter
-    const tasks = await Task.find(filter)
-      .populate("assignee", "_id name role email")
-      .populate("userEstimatedTime.user", "_id name role")
-      .populate("status.user", "_id name role")
-      .populate("dueDate.user", "_id name role")
-      .populate("startDate.user", "_id name role")
-      .populate("endDate.user", "_id name role")
-      .populate("createdBy", "_id name role")
-      .populate("company", "_id name role")
-      .populate("individualBucket.user", "_id name role")
-      .populate("evaluation.user", "_id name role")
-      .populate("statusHistory.changedBy", "_id name role")
-      .populate("comments.createdBy", "_id name role")
-      .populate("time_spent.user", "_id name role")
-      .populate("Accept.user", "_id name role")
-      .populate("actionEvents.user", "_id name role")
-      .lean();
+      }
+      // Query DB with the fixed filter
+      const tasks = await Task.find(filter)
+        .populate("assignee", "_id name role email")
+        .populate("userEstimatedTime.user", "_id name role")
+        .populate("status.user", "_id name role")
+        .populate("dueDate.user", "_id name role")
+        .populate("startDate.user", "_id name role")
+        .populate("endDate.user", "_id name role")
+        .populate("createdBy", "_id name role")
+        .populate("company", "_id name role")
+        .populate("individualBucket.user", "_id name role")
+        .populate("evaluation.user", "_id name role")
+        .populate("statusHistory.changedBy", "_id name role")
+        .populate("comments.createdBy", "_id name role")
+        .populate("time_spent.user", "_id name role")
+        .populate("Accept.user", "_id name role")
+        .populate("actionEvents.user", "_id name role")
+        .lean();
 
-    // Transform data for better response
-    const transformedTasks = tasks.map(task => ({
-      id: task._id,
-      title: task.taskTitle,
-      description: task.taskDescription,
-      assignee: task.assignee,
-      status: task.status,
-      priority: task.priority,
-      taskDate: task.taskDate,
-      dueDate: task.dueDate,
-      startDate: task.startDate,
-      endDate: task.endDate,
-      entryDone: task.entryDone || 0,
-      noOfEntry: task.noOfEntry || 0,
-      estimatedTime: task.userEstimatedTime,
-      timeSpent: task.time_spent,
-      tags: task.tags || [],
-      company: task.company,
-      individualBucket: task.individualBucket,
-      createdAt: task.createdAt,
-      updatedAt: task.updatedAt
-    }));
-     const groupTasksByAssignee = (tasks: any[]) => {
-      const usersMap = new Map();
-      
-      tasks.forEach((task: any) => {
-        // Since assignee is an array, loop through all assignees
-        task.assignee.forEach((assignee: any) => {
-          const userId = assignee._id.toString();
-          
-          if (!usersMap.has(userId)) {
-            usersMap.set(userId, {
-              user: assignee,
-              tasks: []
+      // Transform data for better response
+      const transformedTasks = tasks.map(task => ({
+        id: task._id,
+        title: task.taskTitle,
+        description: task.taskDescription,
+        assignee: task.assignee,
+        status: task.status,
+        priority: task.priority,
+        taskDate: task.taskDate,
+        dueDate: task.dueDate,
+        startDate: task.startDate,
+        endDate: task.endDate,
+        entryDone: task.entryDone || 0,
+        noOfEntry: task.noOfEntry || 0,
+        estimatedTime: task.userEstimatedTime,
+        timeSpent: task.time_spent,
+        tags: task.tags || [],
+        company: task.company,
+        individualBucket: task.individualBucket,
+        createdAt: task.createdAt,
+        updatedAt: task.updatedAt
+      }));
+      const groupTasksByAssignee = (tasks: any[]) => {
+        const usersMap = new Map();
+
+        tasks.forEach((task: any) => {
+          // Since assignee is an array, loop through all assignees
+          task.assignee.forEach((assignee: any) => {
+            const userId = assignee._id.toString();
+
+            if (!usersMap.has(userId)) {
+              usersMap.set(userId, {
+                user: assignee,
+                tasks: []
+              });
+            }
+
+            // Add the task to this user's task list
+            usersMap.get(userId).tasks.push({
+              id: task.id,
+              title: task.title,
+              description: task.description,
+              status: task.status.find((s: any) => s.user._id.toString() === userId) || task.status[0],
+              priority: task.priority,
+              taskDate: task.taskDate,
+              dueDate: task.dueDate.find((d: any) => d.user._id.toString() === userId) || task.dueDate[0],
+              startDate: task.startDate.find((s: any) => s.user.toString() === userId) || task.startDate[0],
+              endDate: task.endDate.find((e: any) => e.user.toString() === userId) || task.endDate[0],
+              entryDone: task.entryDone,
+              noOfEntry: task.noOfEntry,
+              estimatedTime: task.estimatedTime.find((e: any) => e.user._id.toString() === userId) || task.estimatedTime[0],
+              timeSpent: task.timeSpent.find((t: any) => t.user._id.toString() === userId) || { time: [] },
+              tags: task.tags,
+              company: task.company,
+              individualBucket: task.individualBucket.find((i: any) => i.user.toString() === userId) || task.individualBucket[0],
+              createdAt: task.createdAt,
+              updatedAt: task.updatedAt
             });
-          }
-          
-          // Add the task to this user's task list
-          usersMap.get(userId).tasks.push({
-            id: task.id,
-            title: task.title,
-            description: task.description,
-            status: task.status.find((s: any) => s.user._id.toString() === userId) || task.status[0],
-            priority: task.priority,
-            taskDate: task.taskDate,
-            dueDate: task.dueDate.find((d: any) => d.user._id.toString() === userId) || task.dueDate[0],
-            startDate: task.startDate.find((s: any) => s.user.toString() === userId) || task.startDate[0],
-            endDate: task.endDate.find((e: any) => e.user.toString() === userId) || task.endDate[0],
-            entryDone: task.entryDone,
-            noOfEntry: task.noOfEntry,
-            estimatedTime: task.estimatedTime.find((e: any) => e.user._id.toString() === userId) || task.estimatedTime[0],
-            timeSpent: task.timeSpent.find((t: any) => t.user._id.toString() === userId) || { time: [] },
-            tags: task.tags,
-            company: task.company,
-            individualBucket: task.individualBucket.find((i: any) => i.user.toString() === userId) || task.individualBucket[0],
-            createdAt: task.createdAt,
-            updatedAt: task.updatedAt
           });
         });
+
+        // Convert map to array
+        return Array.from(usersMap.values());
+      };
+      const groupedTasks = groupTasksByAssignee(transformedTasks);
+
+      return res.status(200).json({
+        success: true,
+        count: tasks.length,
+        tasks: groupedTasks,
       });
-      
-      // Convert map to array
-      return Array.from(usersMap.values());
-    };
-    const groupedTasks = groupTasksByAssignee(transformedTasks);
 
-    return res.status(200).json({ 
-      success: true,
-      count: tasks.length, 
-      tasks: groupedTasks,
-    });
-
-  } catch (error: any) {
-    console.error("Error generating report:", error.message);
-    console.error("Error stack:", error.stack);
-    return res.status(500).json({ 
-      message: "Failed to generate report", 
-      error: error.message 
-    });
+    } catch (error: any) {
+      console.error("Error generating report:", error.message);
+      console.error("Error stack:", error.stack);
+      return res.status(500).json({
+        message: "Failed to generate report",
+        error: error.message
+      });
+    }
   }
-}
+  async deleteRepeatTasks(req: AuthRequest, res: Response) {
+    try {
+      const user: any = req.user;
+      if (!user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      const { taskIds, company } = req.body;
+      if (!taskIds || !Array.isArray(taskIds) || !company) {
+        return res
+          .status(400)
+          .json({ message: "Task IDs and company are required" });
+      }
+      const objectIds = taskIds.map((id: string) => new mongoose.Types.ObjectId(id));
+      const result = await RepeatTask.deleteMany({
+        _id: { $in: objectIds },
+        company: company
+      });
+      return res.status(200).json({ message: "Tasks deleted successfully", result });
+    } catch (error: any) {
+      console.error("Error deleting tasks:", error.message);
+      return res.status(500).json({ message: "Failed to delete tasks", error: error.message });
+    }
+  }
 
- 
   private async getLocalTimeZone(): Promise<string> {
     return Intl.DateTimeFormat().resolvedOptions().timeZone;
   }
@@ -1764,6 +1789,7 @@ if (dateRange) {
         location: task.location,
         tags: task.tags ?? [],
         comments: task.comments ?? [],
+        contactPerson: task.contactPerson ?? [],
         createdBy: task.createdBy,
         status: userStatus ?? null,
         NOE: task.noOfEntry ?? 0,
@@ -1782,5 +1808,5 @@ if (dateRange) {
       };
     });
   }
- 
+
 }

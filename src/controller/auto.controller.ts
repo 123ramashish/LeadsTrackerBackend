@@ -144,11 +144,11 @@ export default class AutoStatusUpdater {
       const userIds = users.map((u: any) => u._id.toString());
 
       // 3. Filter users not on leave
-      const usersOnLeave = await this.getUsersOnLeave(
-        userIds,
-        today.toJSDate()
-      );
-      const activeUserIds = userIds.filter((id) => !usersOnLeave.includes(id));
+      // const usersOnLeave = await this.getUsersOnLeave(
+      //   userIds,
+      //   today.toJSDate()
+      // );
+      const activeUserIds = userIds;
 
       if (activeUserIds.length === 0) {
         return {
@@ -157,6 +157,7 @@ export default class AutoStatusUpdater {
           message: "No active users",
         };
       }
+
       // 4. Find tasks assigned to active users with expired dates
       const repeatTasks = await RepeatTask.find({
         assignee: { $in: activeUserIds },
@@ -168,9 +169,7 @@ export default class AutoStatusUpdater {
         try {
           if (!repeatTask.startDate || !repeatTask.endDate) continue;
 
-          const startDate = DateTime.fromJSDate(repeatTask.startDate).startOf(
-            "day"
-          );
+          const startDate = DateTime.fromJSDate(repeatTask.startDate)
           const endDate = DateTime.fromJSDate(repeatTask.endDate).endOf("day");
 
           if (today < startDate || today > endDate) continue;

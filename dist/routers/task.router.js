@@ -30,5 +30,5 @@ taskRouter.post("/contactPerson", auth_middleware_1.authenticate, taskController
 taskRouter.patch("/contactPerson", auth_middleware_1.authenticate, taskController.updateContactPerson);
 taskRouter.delete("/contactPerson", auth_middleware_1.authenticate, taskController.removeContactPerson);
 taskRouter.get("/reports", auth_middleware_1.authenticate, taskController.getReport);
-// taskRouter.delete("/:id",  taskController.deleteTask);
+taskRouter.delete("/deleteRepeatTasks", auth_middleware_1.authenticate, taskController.deleteRepeatTasks);
 exports.default = taskRouter;

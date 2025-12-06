@@ -48,6 +48,6 @@ taskRouter.patch("/contactPerson", authenticate, taskController.updateContactPer
 taskRouter.delete("/contactPerson", authenticate, taskController.removeContactPerson);
 taskRouter.get("/reports", authenticate, taskController.getReport);
 
-// taskRouter.delete("/:id",  taskController.deleteTask);
+taskRouter.delete("/deleteRepeatTasks", authenticate, taskController.deleteRepeatTasks);
 
 export default taskRouter;

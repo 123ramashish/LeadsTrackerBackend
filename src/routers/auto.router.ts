@@ -4,9 +4,9 @@ import { DateTime } from "luxon";
 
 
 // Run createTaskFromRepeatTask every day at 9:00 AM
-cron.schedule("0 9 * * *", async () => {
-  try {
+cron.schedule("0 9  * * *", async () => {  try {
     await AutoController.runAutoRepeatTaskCreation();
+    console.log(`Auto task ran at ${DateTime.now().toISO()}`);
   } catch (err) {
     console.error("Error in createTaskFromRepeatTask:", err);
   }
