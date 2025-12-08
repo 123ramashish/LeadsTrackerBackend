@@ -249,22 +249,40 @@ export default class TaskController {
 
       // ✅ Date range
       if (_dateRange) {
-        const [start, end] = _dateRange.split(",");
-        if (start && end) {
-          const startDt = DateTime.fromISO(start).setZone(localTimeZone).startOf('day');
-          const endDt = DateTime.fromISO(end).setZone(localTimeZone).endOf('day');
-          const startDate = startDt.toJSDate();
-          const endDate = endDt.toJSDate();
+        const [queryStart, queryEnd] = _dateRange.split(",");
+        if (queryStart && queryEnd) {
+          // Convert query dates to proper Date objects
+          const queryStartDate = DateTime.fromISO(queryStart)
+            .setZone(localTimeZone)
+            .startOf('day')
+            .toJSDate();
 
+          const queryEndDate = DateTime.fromISO(queryEnd)
+            .setZone(localTimeZone)
+            .endOf('day')
+            .toJSDate();
+          // Find tasks where task date range overlaps with query date range
           filter.$or = [
-            { taskDate: { $gte: startDate, $lte: endDate } },
+            // Case 1: Query range is completely within task range
             {
-              "dueDate.date": {
-                $elemMatch: { $gte: startDate, $lte: endDate },
-              },
+              "startDate.date": { $lte: queryStartDate },
+              "endDate.date": { $gte: queryEndDate }
             },
-            { "startDate.date": { $gte: startDate, $lte: endDate } },
-            { "endDate.date": { $gte: startDate, $lte: endDate } },
+            // Case 2: Query range overlaps at the beginning of task range
+            {
+              "startDate.date": { $lte: queryEndDate },
+              "endDate.date": { $gte: queryStartDate }
+            },
+            // Case 3: Task has only startDate (ongoing task)
+            {
+              "startDate.date": { $lte: queryEndDate },
+              "endDate.date": null
+            },
+            // Case 4: Task has only endDate (completed by date)
+            {
+              "startDate.date": null,
+              "endDate.date": { $gte: queryStartDate }
+            }
           ];
         }
       }
@@ -476,20 +494,51 @@ export default class TaskController {
       }
 
       //  Date range
+      // ✅ Date range - Find tasks where query date range overlaps with task date range
       if (_dateRange) {
         const [start, end] = _dateRange.split(",");
         if (start && end) {
-          const startDt = DateTime.fromISO(start).setZone(localTimeZone).startOf("day");
-          const endDt = DateTime.fromISO(end).setZone(localTimeZone).endOf("day");
-          const startDate = startDt.toJSDate();
-          const endDate = endDt.toJSDate();
+          const queryStart = DateTime.fromISO(start)
+            .setZone(localTimeZone)
+            .startOf('day')
+            .toJSDate();
 
-          orConditions.push(
-            { taskDate: { $gte: startDate, $lte: endDate } },
-            { "dueDate.date": { $elemMatch: { $gte: startDate, $lte: endDate } } },
-            { "startDate.date": { $gte: startDate, $lte: endDate } },
-            { "endDate.date": { $gte: startDate, $lte: endDate } }
-          );
+          const queryEnd = DateTime.fromISO(end)
+            .setZone(localTimeZone)
+            .endOf('day')
+            .toJSDate();
+
+          // Create date range filter for overlapping ranges
+          const dateRangeFilter = {
+            $or: [
+              // Case 1: Standard overlap - query range overlaps with task range
+              {
+                $and: [
+                  { "startDate.date": { $lte: queryEnd } },
+                  { "endDate.date": { $gte: queryStart } }
+                ]
+              },
+              // Case 2: Task has no end date (ongoing) and started before query end
+              {
+                $and: [
+                  { "startDate.date": { $lte: queryEnd } },
+                  { "endDate.date": null }
+                ]
+              },
+              // Case 3: Task has no start date but ends after query start
+              {
+                $and: [
+                  { "startDate.date": null },
+                  { "endDate.date": { $gte: queryStart } }
+                ]
+              },
+              // Case 4: Check other date fields as fallback
+              { taskDate: { $gte: queryStart, $lte: queryEnd } },
+              { "dueDate.date": { $elemMatch: { $gte: queryStart, $lte: queryEnd } } }
+            ]
+          };
+
+          orConditions.push(dateRangeFilter);
         }
       }
 
