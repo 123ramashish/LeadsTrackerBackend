@@ -1,9 +1,13 @@
 import { Router } from "express";
 import TaskController from "../controller/task.controller";
 import { authenticate } from "../middlewares/auth.middleware";
+import multer from "multer";
 
 const taskController = new TaskController();
 const taskRouter = Router();
+
+// Use memory storage so we can forward buffers to ImageKit
+const upload = multer({ storage: multer.memoryStorage() });
 
 taskRouter.post(
   "/create",
@@ -49,5 +53,8 @@ taskRouter.delete("/contactPerson", authenticate, taskController.removeContactPe
 taskRouter.get("/reports", authenticate, taskController.getReport);
 
 taskRouter.delete("/deleteRepeatTasks", authenticate, taskController.deleteRepeatTasks);
+
+// dynamicReport report 
+taskRouter.get("/dynamicReport", authenticate, taskController.getReportWithFields);
 
 export default taskRouter;

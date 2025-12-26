@@ -8,6 +8,25 @@ import { sendPushNotification } from "../helper/notifications";
 import Notification from "../DataBase/Schema/notification.schema";
 import { stat } from "fs";
 import RepeatTask from "../DataBase/Schema/repeatTask.schema";
+import ImageKit from "imagekit";
+import nodemailer from "nodemailer";
+
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+});
+
+const imagekit = new ImageKit({
+  publicKey: process.env.IMAGEKIT_PUBLIC_KEY as string,
+  privateKey: process.env.IMAGEKIT_PRIVATE_KEY as string,
+  urlEndpoint: process.env.IMAGEKIT_URL_ENDPOINT as string,
+});
+
+const localTimeZone = DateTime.local().zoneName;
+
 interface AuthRequest extends Request {
   user?: {
     sub: string;
@@ -16,6 +35,8 @@ interface AuthRequest extends Request {
     company: string;
   };
 }
+const SAFE_USER_SELECT = "name email phone";
+
 export default class TaskController {
   //  Create Task
   async createTask(req: AuthRequest, res: Response) {
@@ -1742,6 +1763,551 @@ export default class TaskController {
     } catch (error: any) {
       console.error("Error deleting tasks:", error.message);
       return res.status(500).json({ message: "Failed to delete tasks", error: error.message });
+    }
+  }
+
+  async getReportWithFields(req: AuthRequest, res: Response) {
+    try {
+      const user = req.user;
+      if (!user?.sub) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+
+      const { users, fromDate, toDate, fields, status, priority, location } = 
+        req.body || req.query;
+
+      const localTimeZone = DateTime.local().zoneName;
+
+      // Date range setup
+      const startDate: Date = fromDate
+        ? DateTime.fromISO(fromDate, { zone: localTimeZone })
+            .startOf("day")
+            .toJSDate()
+        : DateTime.now().setZone(localTimeZone).startOf("day").toJSDate();
+
+      const endDate: Date = toDate
+        ? DateTime.fromISO(toDate, { zone: localTimeZone })
+            .endOf("day")
+            .toJSDate()
+        : DateTime.now().setZone(localTimeZone).endOf("day").toJSDate();
+
+      // Build query
+      const query: Record<string, any> = {
+        taskDate: { $gte: startDate, $lte: endDate },
+        company: user.company,
+      };
+
+      // Handle user filtering based on role
+      let userIds: mongoose.Types.ObjectId[] = [];
+
+      if (user.role === "staff") {
+        query.assignee = new mongoose.Types.ObjectId(user.sub);
+      } else if (user.role === "admin") {
+        if (!users || users.length === 0) {
+          const allUsers = await User.find({ company: user.company }, "_id");
+          userIds = allUsers.map((u) => u._id);
+        } else {
+          let arrayOfUsers = Array.isArray(users) ? users : users.split(",");
+          userIds = arrayOfUsers.map(
+            (id: string) => new mongoose.Types.ObjectId(id)
+          );
+        }
+
+        if (userIds.length > 0) {
+          query.assignee = { $in: userIds };
+        }
+      } else {
+        return res.status(403).json({ message: "Unauthorized access" });
+      }
+
+      // Additional filters
+      if (status) {
+        const statusArray = Array.isArray(status) ? status : status.split(",");
+        query["status.status"] = { $in: statusArray };
+      }
+
+      if (priority) {
+        const priorityArray = Array.isArray(priority) ? priority : priority.split(",");
+        query.priority = { $in: priorityArray };
+      }
+
+      if (location) {
+        query.location = location;
+      }
+
+      // Build projection based on requested fields
+      let projection: Record<string, number> = {
+        _id: 1,
+        taskTitle: 1,
+        taskDate: 1,
+        assignee: 1,
+        company: 1,
+        createdBy: 1,
+      };
+
+      let arrayFields = Array.isArray(fields) ? fields : fields?.split(",");
+      const includeAllFields =
+        !arrayFields || !Array.isArray(arrayFields) || arrayFields.length === 0;
+
+      let userSelectFields = SAFE_USER_SELECT;
+      let createdBySelectFields = SAFE_USER_SELECT;
+
+      if (!includeAllFields) {
+        let needsStatusHistory = false;
+        let needsComments = false;
+        let needsTimeSpent = false;
+        let needsUserFields = new Set<string>();
+        let needsCreatedByFields = new Set<string>();
+
+        arrayFields.forEach((field: string) => {
+          switch (field) {
+            // User fields for assignees
+            case "assigneeName":
+            case "assigneeEmail":
+            case "assigneePhone":
+              needsUserFields.add(field.replace("assignee", "").toLowerCase());
+              break;
+
+            // Creator fields
+            case "creatorName":
+            case "creatorEmail":
+            case "creatorPhone":
+              needsCreatedByFields.add(field.replace("creator", "").toLowerCase());
+              break;
+
+            // Basic fields
+            case "taskTitle":
+            case "taskDescription":
+            case "taskDate":
+            case "priority":
+            case "location":
+            case "address":
+            case "tags":
+            case "notes":
+            case "approval":
+            case "taskType":
+            case "divideTime":
+            case "noOfEntry":
+            case "entryDone":
+              projection[field] = 1;
+              break;
+
+            // Nested fields
+            case "estimatedTime":
+            case "entryTime":
+            case "userEstimatedTime":
+            case "dueDate":
+            case "startDate":
+            case "endDate":
+            case "status":
+            case "evaluation":
+            case "individualBucket":
+            case "Accept":
+            case "contactPerson":
+              projection[field] = 1;
+              break;
+
+            // Complex nested fields
+            case "statusHistory":
+            case "lastStatusChange":
+            case "statusChanges":
+              needsStatusHistory = true;
+              break;
+
+            case "comments":
+            case "commentCount":
+              needsComments = true;
+              break;
+
+            case "timeSpent":
+            case "totalTimeSpent":
+              needsTimeSpent = true;
+              break;
+
+            // Calculated fields
+            case "isOverdue":
+            case "completionRate":
+            case "taskDuration":
+            case "timeRemaining":
+              // These are calculated, no projection needed
+              break;
+
+            default:
+              projection[field] = 1;
+          }
+        });
+
+        if (needsStatusHistory) projection.statusHistory = 1;
+        if (needsComments) projection.comments = 1;
+        if (needsTimeSpent) projection.time_spent = 1;
+
+        if (needsUserFields.size > 0) {
+          userSelectFields = Array.from(needsUserFields).join(" ");
+        }
+        if (needsCreatedByFields.size > 0) {
+          createdBySelectFields = Array.from(needsCreatedByFields).join(" ");
+        }
+      } else {
+        projection = {};
+        userSelectFields = SAFE_USER_SELECT;
+        createdBySelectFields = SAFE_USER_SELECT;
+      }
+
+      console.log("Task projection:", projection);
+      console.log("User select fields:", userSelectFields);
+
+      // Fetch tasks
+      const projectionParam: any = Object.keys(projection).length > 0 ? projection : undefined;
+      const tasks = await Task.find(
+        query,
+        projectionParam
+      )
+        .populate({ path: "assignee", select: userSelectFields })
+        .populate({ path: "createdBy", select: createdBySelectFields })
+        .sort({ taskDate: -1, taskTitle: 1 })
+        .lean();
+
+      if (!tasks || tasks.length === 0) {
+        return res.status(200).json({
+          success: true,
+          message: "No tasks found for the specified criteria",
+          data: {
+            tasks: [],
+            summary: {
+              totalTasks: 0,
+              totalUsers: 0,
+              byStatus: {},
+              byPriority: {},
+            },
+            dateRange: {
+              from: startDate,
+              to: endDate,
+            },
+          },
+        });
+      }
+
+      // Helper functions
+      const calculateTaskDuration = (startDate: Date, endDate: Date): number => {
+        if (!startDate || !endDate) return 0;
+        const start = DateTime.fromJSDate(startDate);
+        const end = DateTime.fromJSDate(endDate);
+        return end.diff(start, "hours").hours;
+      };
+
+      const isTaskOverdue = (dueDate: Date[], status: any[]): boolean => {
+        if (!dueDate || dueDate.length === 0) return false;
+        const latestDue = dueDate[dueDate.length - 1];
+        const now = DateTime.now();
+        const due = DateTime.fromJSDate(latestDue);
+        
+        const isCompleted = status?.some(s => s.status === "completed");
+        return due < now && !isCompleted;
+      };
+
+      const calculateCompletionRate = (entryDone: number, noOfEntry: number): number => {
+        if (!noOfEntry || noOfEntry === 0) return 0;
+        return Math.round((entryDone / noOfEntry) * 100);
+      };
+
+      const getTotalTimeSpent = (timeSpent: any[]): number => {
+        if (!timeSpent || timeSpent.length === 0) return 0;
+        return timeSpent.reduce((total, ts) => {
+          const userTime = ts.time?.reduce((sum: number, t: number) => sum + t, 0) || 0;
+          return total + userTime;
+        }, 0);
+      };
+
+      const getLastStatusChange = (statusHistory: any[]): any => {
+        if (!statusHistory || statusHistory.length === 0) return null;
+        return statusHistory[statusHistory.length - 1];
+      };
+
+      // Format tasks
+      const formattedTasks = tasks.map((task: any) => {
+        const formattedTask: Record<string, any> = {
+          _id: task._id,
+        };
+
+        // Calculate metrics
+        const totalTimeSpent = getTotalTimeSpent(task.time_spent);
+        const lastStatusChange = getLastStatusChange(task.statusHistory);
+        const completionRate = calculateCompletionRate(task.entryDone, task.noOfEntry);
+        
+        let taskDuration = 0;
+        if (task.startDate?.[0]?.date && task.endDate?.[0]?.date) {
+          taskDuration = calculateTaskDuration(
+            task.startDate[0].date,
+            task.endDate[0].date
+          );
+        }
+
+        const isOverdue = isTaskOverdue(
+          task.dueDate?.flatMap((d: any) => d.date) || [],
+          task.status || []
+        );
+
+        if (includeAllFields) {
+          // Include all fields
+          formattedTask.taskTitle = task.taskTitle;
+          formattedTask.taskDescription = task.taskDescription;
+          formattedTask.taskDate = task.taskDate;
+          formattedTask.priority = task.priority;
+          formattedTask.location = task.location;
+          formattedTask.address = task.address;
+          formattedTask.tags = task.tags;
+          formattedTask.notes = task.notes;
+          formattedTask.approval = task.approval;
+          formattedTask.taskType = task.taskType;
+          formattedTask.divideTime = task.divideTime;
+
+          formattedTask.assignee = task.assignee;
+          formattedTask.createdBy = task.createdBy;
+          
+          formattedTask.estimatedTime = task.estimatedTime;
+          formattedTask.entryTime = task.entryTime;
+          formattedTask.noOfEntry = task.noOfEntry;
+          formattedTask.entryDone = task.entryDone;
+          
+          formattedTask.status = task.status;
+          formattedTask.statusHistory = task.statusHistory;
+          formattedTask.lastStatusChange = lastStatusChange;
+          
+          formattedTask.dueDate = task.dueDate;
+          formattedTask.startDate = task.startDate;
+          formattedTask.endDate = task.endDate;
+          
+          formattedTask.timeSpent = task.time_spent;
+          formattedTask.totalTimeSpent = totalTimeSpent;
+          
+          formattedTask.comments = task.comments;
+          formattedTask.commentCount = task.comments?.length || 0;
+          
+          formattedTask.evaluation = task.evaluation;
+          formattedTask.contactPerson = task.contactPerson;
+          
+          // Calculated fields
+          formattedTask.completionRate = completionRate;
+          formattedTask.taskDuration = parseFloat(taskDuration.toFixed(2));
+          formattedTask.isOverdue = isOverdue;
+          
+          formattedTask.createdAt = task.createdAt;
+          formattedTask.updatedAt = task.updatedAt;
+        } else {
+          // Include only requested fields
+          const fieldMapping: Record<string, () => void> = {
+            taskTitle: () => { formattedTask.taskTitle = task.taskTitle; },
+            taskDescription: () => { formattedTask.taskDescription = task.taskDescription; },
+            taskDate: () => { formattedTask.taskDate = task.taskDate; },
+            priority: () => { formattedTask.priority = task.priority; },
+            location: () => { formattedTask.location = task.location; },
+            address: () => { formattedTask.address = task.address; },
+            tags: () => { formattedTask.tags = task.tags; },
+            notes: () => { formattedTask.notes = task.notes; },
+            approval: () => { formattedTask.approval = task.approval; },
+            taskType: () => { formattedTask.taskType = task.taskType; },
+            divideTime: () => { formattedTask.divideTime = task.divideTime; },
+            
+            assignee: () => { formattedTask.assignee = task.assignee; },
+            createdBy: () => { formattedTask.createdBy = task.createdBy; },
+            
+            assigneeName: () => { 
+              formattedTask.assigneeName = task.assignee?.map((a: any) => a.name);
+            },
+            assigneeEmail: () => { 
+              formattedTask.assigneeEmail = task.assignee?.map((a: any) => a.email);
+            },
+            creatorName: () => { formattedTask.creatorName = task.createdBy?.name; },
+            creatorEmail: () => { formattedTask.creatorEmail = task.createdBy?.email; },
+            
+            estimatedTime: () => { formattedTask.estimatedTime = task.estimatedTime; },
+            entryTime: () => { formattedTask.entryTime = task.entryTime; },
+            noOfEntry: () => { formattedTask.noOfEntry = task.noOfEntry; },
+            entryDone: () => { formattedTask.entryDone = task.entryDone; },
+            
+            status: () => { formattedTask.status = task.status; },
+            statusHistory: () => { formattedTask.statusHistory = task.statusHistory; },
+            lastStatusChange: () => { formattedTask.lastStatusChange = lastStatusChange; },
+            
+            dueDate: () => { formattedTask.dueDate = task.dueDate; },
+            startDate: () => { formattedTask.startDate = task.startDate; },
+            endDate: () => { formattedTask.endDate = task.endDate; },
+            
+            timeSpent: () => { formattedTask.timeSpent = task.time_spent; },
+            totalTimeSpent: () => { formattedTask.totalTimeSpent = totalTimeSpent; },
+            
+            comments: () => { formattedTask.comments = task.comments; },
+            commentCount: () => { formattedTask.commentCount = task.comments?.length || 0; },
+            
+            evaluation: () => { formattedTask.evaluation = task.evaluation; },
+            contactPerson: () => { formattedTask.contactPerson = task.contactPerson; },
+            
+            completionRate: () => { formattedTask.completionRate = completionRate; },
+            taskDuration: () => { formattedTask.taskDuration = parseFloat(taskDuration.toFixed(2)); },
+            isOverdue: () => { formattedTask.isOverdue = isOverdue; },
+            
+            createdAt: () => { formattedTask.createdAt = task.createdAt; },
+            updatedAt: () => { formattedTask.updatedAt = task.updatedAt; },
+          };
+
+          arrayFields?.forEach((field: string) => {
+            if (fieldMapping[field]) {
+              fieldMapping[field]();
+            } else if (task[field] !== undefined) {
+              formattedTask[field] = task[field];
+            }
+          });
+
+          // Always include for internal calculations
+          formattedTask._totalTimeSpent = totalTimeSpent;
+          formattedTask._completionRate = completionRate;
+          formattedTask._isOverdue = isOverdue;
+        }
+
+        return formattedTask;
+      });
+
+      // Calculate summaries
+      const statusCount: Record<string, number> = {};
+      const priorityCount: Record<string, number> = {};
+      const userTaskCount: Record<string, number> = {};
+      
+      let totalOverdue = 0;
+      let totalCompleted = 0;
+      let totalTimeSpentAll = 0;
+
+      formattedTasks.forEach((task) => {
+        // Status summary
+        task.status?.forEach((s: any) => {
+          statusCount[s.status] = (statusCount[s.status] || 0) + 1;
+        });
+
+        // Priority summary
+        if (task.priority) {
+          priorityCount[task.priority] = (priorityCount[task.priority] || 0) + 1;
+        }
+
+        // User summary
+        const assignees = Array.isArray(task.assignee) ? task.assignee : [task.assignee];
+        assignees.forEach((assignee: any) => {
+          if (assignee?._id) {
+            const userId = assignee._id.toString();
+            userTaskCount[userId] = (userTaskCount[userId] || 0) + 1;
+          }
+        });
+
+        // Aggregates
+        if (task._isOverdue || task.isOverdue) totalOverdue++;
+        if (task.status?.some((s: any) => s.status === "completed")) totalCompleted++;
+        totalTimeSpentAll += task._totalTimeSpent || task.totalTimeSpent || 0;
+      });
+
+      const overallSummary = {
+        totalTasks: formattedTasks.length,
+        totalUsers: Object.keys(userTaskCount).length,
+        totalCompleted,
+        totalOverdue,
+        totalTimeSpentMinutes: totalTimeSpentAll,
+        totalTimeSpentHours: parseFloat((totalTimeSpentAll / 60).toFixed(2)),
+        byStatus: statusCount,
+        byPriority: priorityCount,
+        completionPercentage: parseFloat(
+          ((totalCompleted / formattedTasks.length) * 100).toFixed(2)
+        ),
+      };
+
+      // User-wise summary
+      const userSummaries: Record<string, any> = {};
+      
+      formattedTasks.forEach((task) => {
+        const assignees = Array.isArray(task.assignee) ? task.assignee : [task.assignee];
+        
+        assignees.forEach((assignee: any) => {
+          if (!assignee?._id) return;
+          
+          const userId = assignee._id.toString();
+          
+          if (!userSummaries[userId]) {
+            userSummaries[userId] = {
+              user: assignee,
+              totalTasks: 0,
+              completedTasks: 0,
+              overdueTasks: 0,
+              totalTimeSpent: 0,
+              byStatus: {},
+              byPriority: {},
+            };
+          }
+
+          userSummaries[userId].totalTasks++;
+          
+          if (task.status?.some((s: any) => s.status === "completed")) {
+            userSummaries[userId].completedTasks++;
+          }
+          
+          if (task._isOverdue || task.isOverdue) {
+            userSummaries[userId].overdueTasks++;
+          }
+
+          const userTimeSpent = task.time_spent?.find(
+            (ts: any) => ts.user?.toString() === userId
+          );
+          if (userTimeSpent) {
+            const time = userTimeSpent.time?.reduce((sum: number, t: number) => sum + t, 0) || 0;
+            userSummaries[userId].totalTimeSpent += time;
+          }
+
+          // Status count
+          const userStatus = task.status?.find((s: any) => s.user?.toString() === userId);
+          if (userStatus) {
+            userSummaries[userId].byStatus[userStatus.status] = 
+              (userSummaries[userId].byStatus[userStatus.status] || 0) + 1;
+          }
+
+          // Priority count
+          if (task.priority) {
+            userSummaries[userId].byPriority[task.priority] = 
+              (userSummaries[userId].byPriority[task.priority] || 0) + 1;
+          }
+        });
+      });
+
+      const userSummariesArray = Object.values(userSummaries).map((summary: any) => ({
+        user: summary.user,
+        totalTasks: summary.totalTasks,
+        completedTasks: summary.completedTasks,
+        overdueTasks: summary.overdueTasks,
+        totalTimeSpentMinutes: summary.totalTimeSpent,
+        totalTimeSpentHours: parseFloat((summary.totalTimeSpent / 60).toFixed(2)),
+        completionRate: parseFloat(
+          ((summary.completedTasks / summary.totalTasks) * 100).toFixed(2)
+        ),
+        byStatus: summary.byStatus,
+        byPriority: summary.byPriority,
+      }));
+
+      return res.status(200).json({
+        success: true,
+        message: "Task report retrieved successfully",
+        data: {
+          tasks: formattedTasks,
+          userSummaries: userSummariesArray,
+          overallSummary,
+          dateRange: {
+            from: startDate,
+            to: endDate,
+            fromISO: DateTime.fromJSDate(startDate, { zone: localTimeZone }).toISODate(),
+            toISO: DateTime.fromJSDate(endDate, { zone: localTimeZone }).toISODate(),
+          },
+        },
+      });
+    } catch (error: any) {
+      console.error("Error fetching task report:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Internal server error",
+        error: error.message,
+      });
     }
   }
 
