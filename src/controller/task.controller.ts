@@ -1775,7 +1775,6 @@ export default class TaskController {
 
       const { users, fromDate, toDate, fields, status, priority, location } = 
         req.body || req.query;
-
       const localTimeZone = DateTime.local().zoneName;
 
       // Date range setup

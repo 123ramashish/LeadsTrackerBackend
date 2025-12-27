@@ -12,6 +12,11 @@ dashboardRouter.get(
   authenticate,
   DashboardController.getDashboardData
 );
+dashboardRouter.get(
+  "/dashboard/graph",
+  authenticate,
+  DashboardController.dashboardGraph
+);
 
 
 export default dashboardRouter;
