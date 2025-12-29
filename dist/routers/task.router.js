@@ -6,8 +6,11 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const task_controller_1 = __importDefault(require("../controller/task.controller"));
 const auth_middleware_1 = require("../middlewares/auth.middleware");
+const multer_1 = __importDefault(require("multer"));
 const taskController = new task_controller_1.default();
 const taskRouter = (0, express_1.Router)();
+// Use memory storage so we can forward buffers to ImageKit
+const upload = (0, multer_1.default)({ storage: multer_1.default.memoryStorage() });
 taskRouter.post("/create", auth_middleware_1.authenticate, taskController.createTask.bind(taskController));
 // Future endpoints
 taskRouter.get("/bucket", auth_middleware_1.authenticate, taskController.getTaskBucket);
@@ -31,4 +34,6 @@ taskRouter.patch("/contactPerson", auth_middleware_1.authenticate, taskControlle
 taskRouter.delete("/contactPerson", auth_middleware_1.authenticate, taskController.removeContactPerson);
 taskRouter.get("/reports", auth_middleware_1.authenticate, taskController.getReport);
 taskRouter.delete("/deleteRepeatTasks", auth_middleware_1.authenticate, taskController.deleteRepeatTasks);
+// dynamicReport report 
+taskRouter.get("/dynamicReport", auth_middleware_1.authenticate, taskController.getReportWithFields);
 exports.default = taskRouter;

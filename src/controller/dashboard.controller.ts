@@ -8,7 +8,7 @@ interface AuthRequest extends Request {
     sub: string;
     email: string;
     role: string;
-    company:string
+    company: string
   };
 }
 interface DashboardStats {
@@ -41,6 +41,9 @@ interface DashboardStats {
     variance: number;
   };
 }
+
+const localTimeZone = DateTime.local().zoneName;
+
 // Helper function to convert time to minutes
 function convertToMinutes(value: number, unit: string): number {
   switch (unit) {
@@ -145,11 +148,15 @@ export default class DashboardController {
   }
 
   static async dashboardGraph(req: AuthRequest, res: Response) {
+    const normalize = (val: any) =>
+      val && val !== "null" && val !== "undefined" && val !== "" ? val : null;
+
+
     try {
       const { dateRange, assignee, priority, status } = req.query;
       const userId = req.user?.sub;
       const company = req.user?.company;
-
+      console.log("req", req.query)
       if (!company) {
         return res.status(400).json({ message: "Company not found" });
       }
@@ -158,6 +165,46 @@ export default class DashboardController {
       const query: any = { company: new mongoose.Types.ObjectId(company as string) };
 
       // Date range filter
+      if (dateRange) {
+        const _dateRange = normalize(dateRange);
+
+        const [queryStart, queryEnd] = _dateRange.split(",");
+        if (queryStart && queryEnd) {
+          // Convert query dates to proper Date objects
+          const queryStartDate = DateTime.fromISO(queryStart)
+            .setZone(localTimeZone)
+            .startOf('day')
+            .toJSDate();
+
+          const queryEndDate = DateTime.fromISO(queryEnd)
+            .setZone(localTimeZone)
+            .endOf('day')
+            .toJSDate();
+          // Find tasks where task date range overlaps with query date range
+          query.$or = [
+            // Case 1: Query range is completely within task range
+            {
+              "startDate.date": { $lte: queryStartDate },
+              "endDate.date": { $gte: queryEndDate }
+            },
+            // Case 2: Query range overlaps at the beginning of task range
+            {
+              "startDate.date": { $lte: queryEndDate },
+              "endDate.date": { $gte: queryStartDate }
+            },
+            // Case 3: Task has only startDate (ongoing task)
+            {
+              "startDate.date": { $lte: queryEndDate },
+              "endDate.date": null
+            },
+            // Case 4: Task has only endDate (completed by date)
+            {
+              "startDate.date": null,
+              "endDate.date": { $gte: queryStartDate }
+            }
+          ];
+        }
+      }
       if (dateRange && Array.isArray(dateRange) && dateRange.length === 2) {
         query.taskDate = {
           $gte: new Date(dateRange[0] as string),
@@ -166,6 +213,12 @@ export default class DashboardController {
       }
 
       // Assignee filter
+      if (assignee) {
+        const _assignee = normalize(assignee);
+        query.assignee = {
+          $in: _assignee.split(",").map((a: any) => a.trim().toLowerCase()),
+        };
+      }
       if (assignee && Array.isArray(assignee) && assignee.length > 0) {
         query.assignee = {
           $in: assignee.map(id => new mongoose.Types.ObjectId(id as string))
@@ -181,7 +234,7 @@ export default class DashboardController {
       if (status && Array.isArray(status) && status.length > 0) {
         query['status.status'] = { $in: status };
       }
-
+      console.log("query", query)
       // Fetch all tasks matching the filters
       const tasks = await Task.find(query)
         .populate('assignee', 'name')
@@ -259,8 +312,8 @@ export default class DashboardController {
         }
 
         // Tasks in Bucket (individual or company bucket)
-        if (task.companyBucket || 
-            (task.individualBucket && task.individualBucket.some((b: any) => b.individual))) {
+        if (task.companyBucket ||
+          (task.individualBucket && task.individualBucket.some((b: any) => b.individual))) {
           dashboardData.stats.tasksInBucket++;
         }
 
@@ -304,8 +357,8 @@ export default class DashboardController {
 
       // Calculate averages and final stats
       dashboardData.stats.contactPersons = contactPersonSet.size;
-      dashboardData.stats.averageEntryDone = tasksWithEntryDone > 0 
-        ? Math.round(totalEntryDone / tasksWithEntryDone) 
+      dashboardData.stats.averageEntryDone = tasksWithEntryDone > 0
+        ? Math.round(totalEntryDone / tasksWithEntryDone)
         : 0;
 
       // Sort estimated vs actual by estimated time and take top 7
@@ -337,7 +390,7 @@ export default class DashboardController {
 
     } catch (error) {
       console.error('Dashboard Graph Error:', error);
-      return res.status(500).json({ 
+      return res.status(500).json({
         success: false,
         message: "Something went wrong!",
         error: error instanceof Error ? error.message : 'Unknown error'
