@@ -155,6 +155,40 @@ export default class AttendanceController {
       }
       // Punch Out
       else if (punchOut) {
+        // First, punch out all previous records that only have punchIn for this user and company
+        const incompletePunchIns = await attendanceSchema.find({
+          user: new mongoose.Types.ObjectId(user.sub),
+          company: user.company, // Assuming company is available in user object
+          punchOut: { $exists: false },
+        }).sort({ punchIn: -1 });
+
+        // Process all incomplete punch-ins except the most recent one (today's record)
+        if (incompletePunchIns.length > 1) {
+          const previousRecords = incompletePunchIns.slice(1); // Skip the first (most recent) record
+
+          for (const record of previousRecords) {
+            const punchInDate = new Date(record.punchIn);
+            // Set punch out time to 6 PM of the same day as punch in
+            const systemPunchOutDate = new Date(punchInDate);
+            systemPunchOutDate.setHours(18, 0, 0, 0); // 6 PM
+
+            await attendanceSchema.findByIdAndUpdate(
+              record._id,
+              {
+                punchOut: systemPunchOutDate,
+                punchOutLocation: "System punchOut",
+                punchOutInfo: {
+                  ip: "System",
+                  userAgent: "Auto punch-out",
+                },
+                updatedAt: DateTime.now().setZone(localTimeZone).toJSDate(),
+              },
+              { new: true }
+            );
+          }
+        }
+
+        // Now find the active record for today's punch-out
         const activeRecord = await attendanceSchema
           .findOne({
             user: new mongoose.Types.ObjectId(user.sub),
@@ -194,6 +228,7 @@ export default class AttendanceController {
         const punchOutTime = DateTime.fromJSDate(punchOutDate)
           .setZone(localTimeZone)
           .toFormat("hh:mm a");
+
         const totalHours = (
           (punchOutDate.getTime() - punchInDate.getTime()) /
           3600000
@@ -206,6 +241,7 @@ export default class AttendanceController {
           record: updated,
         });
       }
+
 
       return res
         .status(400)
