@@ -94,8 +94,8 @@ export default class AttendanceController {
       
       // Set punch out time to 6 PM of the same day as punch in, in local timezone
       const systemPunchOutDateTime = recordPunchInDateTime.set({ 
-        hour: 18, 
-        minute: 0, 
+        hour: 12, 
+        minute: 30, 
         second: 0, 
         millisecond: 0 
       });
