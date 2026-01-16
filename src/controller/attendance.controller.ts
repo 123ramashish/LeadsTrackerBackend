@@ -66,30 +66,76 @@ export default class AttendanceController {
         }
       }
       // Punch In
-      if (punchIn) {
-        const newRecord = await attendanceSchema.create({
-          user: user.sub,
-          punchIn: DateTime.fromISO(punchIn).setZone(localTimeZone).toJSDate(),
-          punchInLocation: punchInLocation || "N/A",
-          punchInInfo: {
-            ip: req?.ip,
-            userAgent: req?.headers["user-agent"],
+     if (punchIn) {
+  const punchInDateTime = DateTime.fromISO(punchIn).setZone(localTimeZone);
+  
+  // Validate punch-in time - must be before 5 PM
+  const punchInHour = punchInDateTime.hour;
+  if (punchInHour >= 17) { // 17:00 is 5 PM in 24-hour format
+    return res.status(400).json({
+      message: "Punch-in not allowed after 5 PM. Please contact your administrator.",
+    });
+  }
 
+  // First, punch out all previous records that only have punchIn for this user and company
+  const incompletePunchIns = await attendanceSchema.find({
+    user: new mongoose.Types.ObjectId(user.sub),
+    company: user.company,
+    punchOut: { $exists: false },
+  }).sort({ punchIn: -1 });
+
+  // Process all incomplete punch-ins except the most recent one (today's record)
+  if (incompletePunchIns.length > 1) {
+    const previousRecords = incompletePunchIns.slice(0); // Skip the first (most recent) record
+    
+    for (const record of previousRecords) {
+      // Convert the punch-in time to DateTime in the local timezone
+      const recordPunchInDateTime = DateTime.fromJSDate(record.punchIn).setZone(localTimeZone);
+      
+      // Set punch out time to 6 PM of the same day as punch in, in local timezone
+      const systemPunchOutDateTime = recordPunchInDateTime.set({ 
+        hour: 18, 
+        minute: 0, 
+        second: 0, 
+        millisecond: 0 
+      });
+      
+      await attendanceSchema.findByIdAndUpdate(
+        record._id,
+        {
+          punchOut: systemPunchOutDateTime.toJSDate(),
+          punchOutLocation: "System punchOut",
+          punchOutInfo: {
+            ip: "System",
+            userAgent: "Auto punch-out",
           },
-          createdAt: DateTime.now().setZone(localTimeZone).toJSDate(),
-          company: user?.company,
-        });
+          updatedAt: DateTime.now().setZone(localTimeZone).toJSDate(),
+        },
+        { new: true }
+      );
+    }
+  }
 
-        const punchInTime = DateTime.fromISO(punchIn)
-          .setZone(localTimeZone)
-          .toFormat("hh:mm a");
+  const newRecord = await attendanceSchema.create({
+    user: user.sub,
+    punchIn: punchInDateTime.toJSDate(),
+    punchInLocation: punchInLocation || "N/A",
+    punchInInfo: {
+      ip: req?.ip,
+      userAgent: req?.headers["user-agent"],
+    },
+    createdAt: DateTime.now().setZone(localTimeZone).toJSDate(),
+    company: user?.company,
+  });
 
-        return res.status(201).json({
-          message: `${user.name || "A user"} punched in at ${punchInTime}`,
-          location: newRecord.punchInLocation,
-          record: newRecord,
-        });
-      }
+  const punchInTime = punchInDateTime.toFormat("hh:mm a");
+  
+  return res.status(201).json({
+    message: `${user.name || "A user"} punched in at ${punchInTime}`,
+    location: newRecord.punchInLocation,
+    record: newRecord,
+  });
+}
       // lunchIn
       else if (lunchIn) {
         const activeRecord = await attendanceSchema.findOne({
@@ -155,38 +201,7 @@ export default class AttendanceController {
       }
       // Punch Out
       else if (punchOut) {
-        // First, punch out all previous records that only have punchIn for this user and company
-        const incompletePunchIns = await attendanceSchema.find({
-          user: new mongoose.Types.ObjectId(user.sub),
-          company: user.company, // Assuming company is available in user object
-          punchOut: { $exists: false },
-        }).sort({ punchIn: -1 });
-
-        // Process all incomplete punch-ins except the most recent one (today's record)
-        if (incompletePunchIns.length > 1) {
-          const previousRecords = incompletePunchIns.slice(1); // Skip the first (most recent) record
-
-          for (const record of previousRecords) {
-            const punchInDate = new Date(record.punchIn);
-            // Set punch out time to 6 PM of the same day as punch in
-            const systemPunchOutDate = new Date(punchInDate);
-            systemPunchOutDate.setHours(18, 0, 0, 0); // 6 PM
-
-            await attendanceSchema.findByIdAndUpdate(
-              record._id,
-              {
-                punchOut: systemPunchOutDate,
-                punchOutLocation: "System punchOut",
-                punchOutInfo: {
-                  ip: "System",
-                  userAgent: "Auto punch-out",
-                },
-                updatedAt: DateTime.now().setZone(localTimeZone).toJSDate(),
-              },
-              { new: true }
-            );
-          }
-        }
+       
 
         // Now find the active record for today's punch-out
         const activeRecord = await attendanceSchema
