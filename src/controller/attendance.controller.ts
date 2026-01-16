@@ -268,7 +268,38 @@ export default class AttendanceController {
         .json({ message: "Internal server error", error: error.message });
     }
   }
-
+static async updateSystemPuncoutTime(req: AuthenticatedRequest, res: Response) {
+  try{
+    const{user} = req;
+const attendanceRecords = await attendanceSchema.find({
+  punchOutLocation: "System punchOut",
+  company:user.company,
+});
+for (const record of attendanceRecords) {
+  const punchInDateTime = DateTime.fromJSDate(record.punchIn).setZone(DateTime.local().zoneName);
+  const correctedPunchOutDateTime = punchInDateTime.set({
+    hour: 12,
+    minute: 30,
+    second: 0,
+    millisecond: 0
+  });
+  await attendanceSchema.findByIdAndUpdate(
+    record._id,
+    {
+      punchOut: correctedPunchOutDateTime.toJSDate(),
+      updatedAt: DateTime.now().setZone(DateTime.local().zoneName).toJSDate(),
+    },
+    { new: true }
+  );
+}
+return  res.status(200).json({ message: "System punchOut times updated successfully." });
+  }catch(error:any){
+    console.error(error);
+    return res
+      .status(500)
+      .json({ message: "Internal server error", error: error.message });
+  }
+}
 
   static async getAttendance(req: AuthenticatedRequest, res: Response) {
     try {

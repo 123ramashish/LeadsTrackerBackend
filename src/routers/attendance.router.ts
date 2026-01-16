@@ -11,7 +11,7 @@ attendanceRouter.post("/", authenticate, AttendanceController.punchHandler);
 attendanceRouter.get("/", authenticate, AttendanceController.getAttendance);
 attendanceRouter.get("/messages", authenticate, AttendanceController.getMessage);
 attendanceRouter.get("/dynamicReport", authenticate, AttendanceController.getReportWithFields);
-// attendanceRouter.put("/", authenticate, AttendanceController.checkActiveSession);
+attendanceRouter.put("/updatePunchoutTime", authenticate, AttendanceController.updateSystemPuncoutTime);
 // attendanceRouter.patch("/", authenticate, AttendanceController.exportExcelData);
 // attendanceRouter.delete("/", authenticate, AttendanceController.deleteImageKitFile);
 
