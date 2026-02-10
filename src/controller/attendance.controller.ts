@@ -66,76 +66,76 @@ export default class AttendanceController {
         }
       }
       // Punch In
-     if (punchIn) {
-  const punchInDateTime = DateTime.fromISO(punchIn).setZone(localTimeZone);
-  
-  // Validate punch-in time - must be before 5 PM
-  const punchInHour = punchInDateTime.hour;
-  if (punchInHour >= 17) { // 17:00 is 5 PM in 24-hour format
-    return res.status(400).json({
-      message: "Punch-in not allowed after 5 PM. Please contact your administrator.",
-    });
-  }
+      if (punchIn) {
+        const punchInDateTime = DateTime.fromISO(punchIn).setZone(localTimeZone);
 
-  // First, punch out all previous records that only have punchIn for this user and company
-  const incompletePunchIns = await attendanceSchema.find({
-    user: new mongoose.Types.ObjectId(user.sub),
-    company: user.company,
-    punchOut: { $exists: false },
-  }).sort({ punchIn: -1 });
+        // Validate punch-in time - must be before 5 PM
+        const punchInHour = punchInDateTime.hour;
+        if (punchInHour >= 17) { // 17:00 is 5 PM in 24-hour format
+          return res.status(400).json({
+            message: "Punch-in not allowed after 5 PM. Please contact your administrator.",
+          });
+        }
 
-  // Process all incomplete punch-ins except the most recent one (today's record)
-  if (incompletePunchIns.length > 1) {
-    const previousRecords = incompletePunchIns.slice(0); // Skip the first (most recent) record
-    
-    for (const record of previousRecords) {
-      // Convert the punch-in time to DateTime in the local timezone
-      const recordPunchInDateTime = DateTime.fromJSDate(record.punchIn).setZone(localTimeZone);
-      
-      // Set punch out time to 6 PM of the same day as punch in, in local timezone
-      const systemPunchOutDateTime = recordPunchInDateTime.set({ 
-        hour: 12, 
-        minute: 30, 
-        second: 0, 
-        millisecond: 0 
-      });
-      
-      await attendanceSchema.findByIdAndUpdate(
-        record._id,
-        {
-          punchOut: systemPunchOutDateTime.toJSDate(),
-          punchOutLocation: "System punchOut",
-          punchOutInfo: {
-            ip: "System",
-            userAgent: "Auto punch-out",
+        // First, punch out all previous records that only have punchIn for this user and company
+        const incompletePunchIns = await attendanceSchema.find({
+          user: new mongoose.Types.ObjectId(user.sub),
+          company: user.company,
+          punchOut: { $exists: false },
+        }).sort({ punchIn: -1 });
+
+        // Process all incomplete punch-ins except the most recent one (today's record)
+        if (incompletePunchIns.length > 1) {
+          const previousRecords = incompletePunchIns.slice(0); // Skip the first (most recent) record
+
+          for (const record of previousRecords) {
+            // Convert the punch-in time to DateTime in the local timezone
+            const recordPunchInDateTime = DateTime.fromJSDate(record.punchIn).setZone(localTimeZone);
+
+            // Set punch out time to 6 PM of the same day as punch in, in local timezone
+            const systemPunchOutDateTime = recordPunchInDateTime.set({
+              hour: 12,
+              minute: 30,
+              second: 0,
+              millisecond: 0
+            });
+
+            await attendanceSchema.findByIdAndUpdate(
+              record._id,
+              {
+                punchOut: systemPunchOutDateTime.toJSDate(),
+                punchOutLocation: "System punchOut",
+                punchOutInfo: {
+                  ip: "System",
+                  userAgent: "Auto punch-out",
+                },
+                updatedAt: DateTime.now().setZone(localTimeZone).toJSDate(),
+              },
+              { new: true }
+            );
+          }
+        }
+
+        const newRecord = await attendanceSchema.create({
+          user: user.sub,
+          punchIn: punchInDateTime.toJSDate(),
+          punchInLocation: punchInLocation || "N/A",
+          punchInInfo: {
+            ip: req?.ip,
+            userAgent: req?.headers["user-agent"],
           },
-          updatedAt: DateTime.now().setZone(localTimeZone).toJSDate(),
-        },
-        { new: true }
-      );
-    }
-  }
+          createdAt: DateTime.now().setZone(localTimeZone).toJSDate(),
+          company: user?.company,
+        });
 
-  const newRecord = await attendanceSchema.create({
-    user: user.sub,
-    punchIn: punchInDateTime.toJSDate(),
-    punchInLocation: punchInLocation || "N/A",
-    punchInInfo: {
-      ip: req?.ip,
-      userAgent: req?.headers["user-agent"],
-    },
-    createdAt: DateTime.now().setZone(localTimeZone).toJSDate(),
-    company: user?.company,
-  });
+        const punchInTime = punchInDateTime.toFormat("hh:mm a");
 
-  const punchInTime = punchInDateTime.toFormat("hh:mm a");
-  
-  return res.status(201).json({
-    message: `${user.name || "A user"} punched in at ${punchInTime}`,
-    location: newRecord.punchInLocation,
-    record: newRecord,
-  });
-}
+        return res.status(201).json({
+          message: `${user.name || "A user"} punched in at ${punchInTime}`,
+          location: newRecord.punchInLocation,
+          record: newRecord,
+        });
+      }
       // lunchIn
       else if (lunchIn) {
         const activeRecord = await attendanceSchema.findOne({
@@ -201,7 +201,7 @@ export default class AttendanceController {
       }
       // Punch Out
       else if (punchOut) {
-       
+
 
         // Now find the active record for today's punch-out
         const activeRecord = await attendanceSchema
@@ -268,38 +268,38 @@ export default class AttendanceController {
         .json({ message: "Internal server error", error: error.message });
     }
   }
-static async updateSystemPuncoutTime(req: AuthenticatedRequest, res: Response) {
-  try{
-    const{user} = req;
-const attendanceRecords = await attendanceSchema.find({
-  punchOutLocation: "System punchOut",
-  company:user.company,
-});
-for (const record of attendanceRecords) {
-  const punchInDateTime = DateTime.fromJSDate(record.punchIn).setZone(DateTime.local().zoneName);
-  const correctedPunchOutDateTime = punchInDateTime.set({
-    hour: 12,
-    minute: 30,
-    second: 0,
-    millisecond: 0
-  });
-  await attendanceSchema.findByIdAndUpdate(
-    record._id,
-    {
-      punchOut: correctedPunchOutDateTime.toJSDate(),
-      updatedAt: DateTime.now().setZone(DateTime.local().zoneName).toJSDate(),
-    },
-    { new: true }
-  );
-}
-return  res.status(200).json({ message: "System punchOut times updated successfully." });
-  }catch(error:any){
-    console.error(error);
-    return res
-      .status(500)
-      .json({ message: "Internal server error", error: error.message });
+  static async updateSystemPuncoutTime(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { user } = req;
+      const attendanceRecords = await attendanceSchema.find({
+        punchOutLocation: "System punchOut",
+        company: user.company,
+      });
+      for (const record of attendanceRecords) {
+        const punchInDateTime = DateTime.fromJSDate(record.punchIn).setZone(DateTime.local().zoneName);
+        const correctedPunchOutDateTime = punchInDateTime.set({
+          hour: 12,
+          minute: 30,
+          second: 0,
+          millisecond: 0
+        });
+        await attendanceSchema.findByIdAndUpdate(
+          record._id,
+          {
+            punchOut: correctedPunchOutDateTime.toJSDate(),
+            updatedAt: DateTime.now().setZone(DateTime.local().zoneName).toJSDate(),
+          },
+          { new: true }
+        );
+      }
+      return res.status(200).json({ message: "System punchOut times updated successfully." });
+    } catch (error: any) {
+      console.error(error);
+      return res
+        .status(500)
+        .json({ message: "Internal server error", error: error.message });
+    }
   }
-}
 
   static async getAttendance(req: AuthenticatedRequest, res: Response) {
     try {
@@ -1229,4 +1229,121 @@ return  res.status(200).json({ message: "System punchOut times updated successfu
       });
     }
   }
+
+ static async getSystemPunchoutData(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    const user = req.user;
+    console.log("api hit");
+
+    if (!user?.sub) {
+      return res.status(401).json({ message: "Authentication required" });
+    }
+
+    const result = await attendanceSchema.find({
+      punchOutLocation: { $regex: "System punchOut", $options: "i" },
+    });
+
+    const formattedResult = result.map((item) => ({
+      ...item.toObject(),
+      punchInLocalDateTime: item.punchIn
+        ? new Date(item.punchIn).toLocaleString("en-IN", {
+            timeZone: "Asia/Kolkata",
+            hour12: true,
+          })
+        : null,
+      punchOutLocalDateTime: item.punchOut
+        ? new Date(item.punchOut).toLocaleString("en-IN", {
+            timeZone: "Asia/Kolkata",
+            hour12: true,
+          })
+        : null,
+    }));
+
+    return res.status(200).json({
+      success: true,
+      message: "Data fetched successfully!",
+      result: formattedResult,
+    });
+  } catch (error: any) {
+    console.error("Error fetching report:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message,
+    });
+  }
+}
+
+static async updateSystemPunchOutTime(
+  req: AuthenticatedRequest,
+  res: Response
+) {
+  try {
+    const { punchOut } = req.body;
+
+    if (!punchOut) {
+      return res.status(400).json({
+        success: false,
+        message: "Punch-out time is required",
+      });
+    }
+    const punchOutTime = new Date(punchOut);
+
+    // Fetch all system punch-out records
+    const records = await attendanceSchema.find({
+      punchOutLocation: { $regex: "System punchOut", $options: "i" },
+      punchIn: { $exists: true },
+    });
+
+    if (!records.length) {
+      return res.status(404).json({
+        success: false,
+        message: "No system punch-out records found",
+      });
+    }
+
+    let updatedCount = 0;
+
+    for (const attendance of records) {
+      const punchInDate = new Date(attendance.punchIn);
+
+      // 🧠 Create punchOut with SAME DATE as punchIn
+      const finalPunchOut = new Date(punchInDate);
+      finalPunchOut.setHours(
+        punchOutTime.getHours(),
+        punchOutTime.getMinutes(),
+        punchOutTime.getSeconds(),
+        punchOutTime.getMilliseconds()
+      );
+
+      attendance.punchOut = finalPunchOut;
+      attendance.punchOutLocation = "System punchOut";
+      attendance.punchOutInfo = {
+        ip: "System",
+        userAgent: "Auto punch-out",
+      };
+
+      await attendance.save();
+      updatedCount++;
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "System punch-out updated successfully",
+      updatedCount,
+    });
+  } catch (error: any) {
+    console.error("Error updating system punch-out:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message,
+    });
+  }
+}
+
+
 }

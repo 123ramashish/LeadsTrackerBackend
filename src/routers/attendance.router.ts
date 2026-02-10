@@ -12,8 +12,8 @@ attendanceRouter.get("/", authenticate, AttendanceController.getAttendance);
 attendanceRouter.get("/messages", authenticate, AttendanceController.getMessage);
 attendanceRouter.get("/dynamicReport", authenticate, AttendanceController.getReportWithFields);
 attendanceRouter.put("/updatePunchoutTime", authenticate, AttendanceController.updateSystemPuncoutTime);
-// attendanceRouter.patch("/", authenticate, AttendanceController.exportExcelData);
-// attendanceRouter.delete("/", authenticate, AttendanceController.deleteImageKitFile);
+attendanceRouter.get("/systempuchout/data", authenticate, AttendanceController.getSystemPunchoutData);
+attendanceRouter.put("/systempuchoutdata", authenticate, AttendanceController.updateSystemPunchOutTime);
 
 // Use memory storage so we can forward buffers to ImageKit
 const upload = multer({ storage: multer.memoryStorage() });
