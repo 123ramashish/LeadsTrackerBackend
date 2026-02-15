@@ -2,34 +2,14 @@ import { Router } from "express";
 import userRouter from "./user.router";
 import registrationRouter from "./registration.router";
 import authRouter from "./auth.router";
-import taskRouter from "./task.router";
-import goalRouter from "./goal.router";
-import repeatTaskRouter from "./repeatTask.router";
-import fileRouter from "./file.router";
-import dashboardRouter from "./dashboard.router";
-import attendanceRouter from "./attendance.router";
-import suggestionRouter from "./suggestions.router";
-import feedbackRouter from "./feedback.router";
-import leadRouter from "./lead.router";
 import notificationRouter from "./notification.router";
-import holidayRouter from "./holiday.router";
 import { authenticate } from "../middlewares/auth.middleware";
 
 const router = Router();
 
-router.use("/attendance", attendanceRouter);
 router.use("/user", userRouter);
-router.use("/holidays", holidayRouter);
-router.use("/dashboard", dashboardRouter);
-router.use("/suggestions", suggestionRouter);
-router.use("/feedbacks", feedbackRouter);
-router.use("/leads", leadRouter);
 router.use("/registration", registrationRouter);
 router.use("/auth", authRouter);
-router.use("/task", taskRouter);
-router.use("/repeatTask", repeatTaskRouter);
-router.use("/goals", goalRouter);
-router.use("/file", fileRouter);
 router.use("/notifications", notificationRouter);
 
 router.use("/", (req, res) => {
