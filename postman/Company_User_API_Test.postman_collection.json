@@ -1,0 +1,410 @@
+{
+  "info": {
+    "name": "Company & User Management API",
+    "description": "Complete test suite for authentication, company registration, and user management endpoints. Includes security validations and edge cases.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:3000/api", "type": "string" },
+    { "key": "admin_token", "value": "", "type": "string" },
+    { "key": "superadmin_token", "value": "", "type": "string" },
+    { "key": "test_company_id", "value": "", "type": "string" },
+    { "key": "test_user_id", "value": "", "type": "string" },
+    { "key": "admin_phone", "value": "+1234567890", "type": "string" },
+    { "key": "admin_password", "value": "SecurePass123!", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "🔐 Authentication Flow",
+      "item": [
+        {
+          "name": "📱 Login (Admin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const res = pm.response.json();",
+                  "pm.environment.set('admin_token', res.token);",
+                  "pm.environment.set('user_id', res.user.id);",
+                  "pm.environment.set('user_role', res.user.userRole);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"{{admin_phone}}\",\n  \"password\": \"{{admin_password}}\"\n}"
+            },
+            "url": "{{base_url}}/auth/login"
+          }
+        },
+        {
+          "name": "🔓 Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{admin_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{base_url}}/auth/logout"
+          }
+        }
+      ]
+    },
+    {
+      "name": "🏢 Company Registration",
+      "item": [
+        {
+          "name": "✅ Register New Company (Success)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "const res = pm.response.json();",
+                  "pm.environment.set('test_company_id', res.company.id);",
+                  "// Update env vars for login",
+                  "pm.environment.set('admin_phone', res.admin.phone);",
+                  "pm.environment.set('admin_password', 'Comp@nyReg2024');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"companyName\": \"Postman Test Inc\",\n  \"companyType\": \"company\",\n  \"contactPhone\": \"+1987654321\",\n  \"contactEmail\": \"contact@test.postman\",\n  \"adminName\": \"Test Admin\",\n  \"adminPhone\": \"+1234567890\",\n  \"adminEmail\": \"admin@test.postman\",\n  \"password\": \"Comp@nyReg2024\"\n}"
+            },
+            "url": "{{base_url}}/companies/register"
+          }
+        },
+        {
+          "name": "❌ Duplicate Company Contact",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"companyName\": \"Duplicate Co\",\n  \"companyType\": \"school\",\n  \"contactPhone\": \"+1987654321\",\n  \"adminName\": \"Dup Admin\",\n  \"adminPhone\": \"+1111111111\",\n  \"password\": \"TestPass123\"\n}"
+            },
+            "url": "{{base_url}}/companies/register"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 409', () => pm.response.to.have.status(409));",
+                  "pm.test('Correct error message', () => {",
+                  "  const res = pm.response.json();",
+                  "  pm.expect(res.message).to.include('already registered');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "👤 Current User Operations",
+      "item": [
+        {
+          "name": "👁️ Get Profile",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{admin_token}}" }],
+            "url": "{{base_url}}/users/me"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const res = pm.response.json();",
+                  "pm.test('Has company data', () => pm.expect(res.company).to.not.be.null);",
+                  "pm.test('No password field', () => pm.expect(res).to.not.have.property('password'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "🔑 Update Password (Success)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{admin_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"{{admin_password}}\",\n  \"newPassword\": \"NewSecurePass!2024\"\n}"
+            },
+            "url": "{{base_url}}/users/me/password"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "// Update env password for future logins",
+                  "pm.environment.set('admin_password', 'NewSecurePass!2024');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "❌ Update Password (Wrong Current)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{admin_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"wrongpass\",\n  \"newPassword\": \"NewPass123\"\n}"
+            },
+            "url": "{{base_url}}/users/me/password"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 401', () => pm.response.to.have.status(401));",
+                  "pm.test('Correct error', () => {",
+                  "  const res = pm.response.json();",
+                  "  pm.expect(res.message).to.include('incorrect');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "👥 Admin User Management",
+      "item": [
+        {
+          "name": "➕ Create User (Success)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "const res = pm.response.json();",
+                  "pm.environment.set('test_user_id', res.user.id);",
+                  "pm.test('User has company', () => pm.expect(res.user.companyId).to.not.be.null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{admin_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"New Test User\",\n  \"phone\": \"+1555123456\",\n  \"email\": \"newuser@test.postman\",\n  \"password\": \"UserPass!2024\",\n  \"userRole\": \"user\"\n}"
+            },
+            "url": "{{base_url}}/users"
+          }
+        },
+        {
+          "name": "📋 Get Users (With Filters)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{admin_token}}" }],
+            "url": {
+              "raw": "{{base_url}}/users?role=user&page=1&limit=5",
+              "query": [
+                { "key": "role", "value": "user" },
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "5" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const res = pm.response.json();",
+                  "pm.test('Has pagination', () => {",
+                  "  pm.expect(res).to.have.property('pagination');",
+                  "  pm.expect(res.pagination.total).to.be.above(0);",
+                  "});",
+                  "pm.test('No sensitive data', () => {",
+                  "  res.users.forEach(user => {",
+                  "    pm.expect(user).to.not.have.property('password');",
+                  "    pm.expect(user).to.not.have.property('resetToken');",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "❌ Create Duplicate Phone",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{admin_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Duplicate User\",\n  \"phone\": \"+1555123456\",\n  \"password\": \"Test123\",\n  \"userRole\": \"user\"\n}"
+            },
+            "url": "{{base_url}}/users"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 409', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "🗑️ Delete User",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{admin_token}}" }],
+            "url": "{{base_url}}/users/{{test_user_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.environment.unset('test_user_id');"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "🛡️ Security & Edge Cases",
+      "item": [
+        {
+          "name": "🚫 Access Without Token",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/users/me"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "🔒 Company Isolation Test",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{admin_token}}" }],
+            "url": "{{base_url}}/users?company=invalid_id"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "// Non-superadmin should ONLY see their company users",
+                  "const res = pm.response.json();",
+                  "res.users.forEach(user => {",
+                  "  pm.test(`User ${user.id} belongs to admin's company`, () => {",
+                  "    pm.expect(user.company._id || user.company).to.equal(pm.environment.get('test_company_id'));",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "❌ Invalid Company Type",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"companyName\": \"Bad Type Co\",\n  \"companyType\": \"invalid_type\",\n  \"contactPhone\": \"+1888888888\",\n  \"adminName\": \"Test\",\n  \"adminPhone\": \"+1777777777\",\n  \"password\": \"TestPass123\"\n}"
+            },
+            "url": "{{base_url}}/companies/register"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));",
+                  "const res = pm.response.json();",
+                  "pm.test('Validation error for type', () => {",
+                  "  pm.expect(res.message).to.include('Company type');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "exec": [
+          "// Auto-refresh tokens before requests if needed",
+          "if (pm.request.url.getPath().includes('/users') && !pm.environment.get('admin_token')) {",
+          "  throw new Error('⚠️ Run \"Login (Admin)\" first!');",
+          "}"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "exec": [
+          "// Global error handler",
+          "if (pm.response.code >= 500) {",
+          "  console.error('SERVER ERROR:', pm.response.text());",
+          "}"
+        ]
+      }
+    }
+  ]
+}

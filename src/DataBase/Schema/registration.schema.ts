@@ -1,57 +1,48 @@
-import  mongoose from 'mongoose'
+import mongoose from 'mongoose';
 
-const userTypes = [
-  "user",
-  "family",
-  "college",
-  "university",
-  "school",
-  "institute",
-  "company",
-  "other"
-];
+const companyTypes = [
+  "family", "college", "university", "school", 
+  "institute", "company", "other"
+] as const;
 
-const registrationSchema = new mongoose.Schema({
-  userType: {
+const companySchema = new mongoose.Schema({
+  type: {
     type: String,
-    required: [true, 'User type is required'],
-    enum: {
-      values: userTypes,
-      message: `Invalid user type. Valid types are: ${userTypes.join(', ')}`
-    }
+    enum: companyTypes,
+    required: [true, 'Company type is required'],
+    lowercase: true
   },
   name: {
     type: String,
-    required: [true, 'Name is required']
+    required: [true, 'Company name is required'],
+    trim: true,
+    minlength: [2, 'Name must be at least 2 characters']
   },
-  phone: {
+  contactEmail: {
     type: String,
-    required: [true, 'Phone number is required'],
-    validate: {
-      validator: function(v:any) {
-        return /^\d{10,14}$/.test(v);
-            },
-            message: (props: { value: string }) => `${props.value} is not a valid phone number! Must be 10-14 digits`
-          }
-        },
-        email: {
-          type: String,
-          validate: {
-            validator: function(v: string) {
-        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
-      },
-      message: (props: { value: string }) => `${props.value} is not a valid email address!`
-    }
+    lowercase: true,
+    trim: true,
+    match: [/^\S+@\S+\.\S+$/, 'Invalid email format']
   },
-  password: {
+  contactPhone: {
     type: String,
-    required: [true, 'Password is required'],
-    minlength: [6, 'Password must be at least 6 characters long']
-  }
+    required: [true, 'Contact phone is required'],
+    match: [/^\d{10,14}$/, 'Phone must be 10-14 digits']
+  },
+  isActive: {
+    type: Boolean,
+    default: true
+  },
+  // Optional fields for future lead tracking
+  industry: String,
+  website: String,
+  address: String
 }, {
-  timestamps: true,    
+  timestamps: true
 });
 
-const Registration = mongoose.model('Registration', registrationSchema);
+// Compound index for uniqueness
+companySchema.index({ name: 1, contactPhone: 1 }, { unique: true });
 
-export default Registration;
+const Company = mongoose.model('Company', companySchema);
+export default Company;

@@ -1,52 +1,35 @@
-import { Router } from "express";
-import { authenticate,authorizeRoles } from "../middlewares/auth.middleware";
-import UserController from "../controller/user.controller";
+import { Router } from 'express';
+import { authenticate, authorizeRoles } from '../middlewares/auth.middleware';
+import { USER_ROLES } from '../DataBase/Schema/user.schema';
+import UserController from '../controller/user.controller';
 
-const userRouter = Router();
+const router = Router();
+const userController = new UserController();
 
-// Create user (admin only)
-userRouter.post(
-  "/create",
-  authenticate,
-  authorizeRoles(["admin","teamLeader"]),
-  UserController.createUser
+// Current user operations
+router.get('/me', authenticate, userController.getProfile.bind(userController));
+router.put('/me/password', authenticate, userController.updateOwnPassword.bind(userController));
+
+// Admin/SuperAdmin operations
+router.post(
+  '/', 
+  authenticate, 
+  authorizeRoles([USER_ROLES.SUPER_ADMIN, USER_ROLES.ADMIN]), 
+  userController.createUser.bind(userController)
 );
 
-// Get all users (admin and team leaders)
-userRouter.get(
-  "/",
-  authenticate,
-  UserController.getUsers
+router.get(
+  '/', 
+  authenticate, 
+  authorizeRoles([USER_ROLES.SUPER_ADMIN, USER_ROLES.ADMIN]), 
+  userController.getUsers.bind(userController)
 );
 
-// Get single user
-userRouter.get(
-  "/:id",
-  authenticate,
-  UserController.getUserById
+router.delete(
+  '/:id', 
+  authenticate, 
+  authorizeRoles([USER_ROLES.SUPER_ADMIN, USER_ROLES.ADMIN]), 
+  userController.deleteUser.bind(userController)
 );
 
-// Update user
-userRouter.put(
-  "/:id",
-  authenticate,
-  UserController.updateUser
-);
-
-// Delete user (admin only)
-userRouter.delete(
-  "/:id",
-  authenticate,
-  authorizeRoles(["admin"]),
-  UserController.deleteUser
-);
-
-// Update password
-userRouter.put(
-  "/:id/password",
-  authenticate,
-  UserController.updatePassword
-);
-// verify auth during login
-userRouter.get('/auth/verify',authenticate, (req,res)=>{res.status(200).json({message:"Valid Token"})})
-export default userRouter;
+export default router;

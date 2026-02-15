@@ -1,119 +1,90 @@
-import { Request, Response } from "express";
-import passwordHash from "password-hash";
-import jwt from "jsonwebtoken";
-import Registration from "../DataBase/Schema/registration.schema";
-import User from "../DataBase/Schema/user.schema";
-import bcrypt from "bcrypt";
+import { Request, Response } from 'express';
+import Company from '../DataBase/Schema/registration.schema';
+import User, { USER_ROLES } from '../DataBase/Schema/user.schema';
 
-export default class RegistrationController {
-  async registerCompany(req: Request, res: Response) {
+export default class CompanyController {
+  // 🌐 PUBLIC: Register new company + create admin user
+  async register(req: Request, res: Response) {
     try {
-      const { userType, name, email, phone, password, role } = req.body;
-      // Validate userType presence
-      if (!userType) {
-        return res.status(400).json({ message: "User type is required" });
+      const { 
+        companyName, 
+        companyType, 
+        contactEmail, 
+        contactPhone,
+        adminName,
+        adminEmail,
+        adminPhone,
+        password 
+      } = req.body;
+      
+      // Validate required fields
+      if (!companyName || !companyType || !contactPhone || 
+          !adminName || !adminPhone || !password) {
+        return res.status(400).json({ 
+          message: 'Missing required fields: companyName, companyType, contactPhone, adminName, adminPhone, password' 
+        });
       }
-
-      // Check if registration exists
-      // const existingRegistration = await Registration.findOne({
-      //   $or: [{ email }, { phone }],
-      // });
-      // if (existingRegistration) {
-      //   return res
-      //     .status(409)
-      //     .json({ message: "Email or phone already registered" });
-      // }
-
-      // Hash password
-      const hashedPassword = await bcrypt.hash(
-        password + process.env.JWT_SECRET,
-        10
-      );
-      // Create registration
-      const newRegistration = new Registration({
-        userType,
-        name,
-        email,
-        phone,
-        password: hashedPassword,
-        role,
+      
+      // Check if company contact exists
+      const existingCompany = await Company.findOne({ 
+        $or: [
+          { contactPhone },
+          { contactEmail: contactEmail?.toLowerCase() }
+        ] 
       });
-      const savedRegistration = await newRegistration.save();
-      const newUser = new User({
-        name,
-        email,
-        phone,
-        password: hashedPassword,
-        company: savedRegistration._id,
-        userRole: "admin",
-      });
-      const savedUser = await newUser.save();
-      return res.status(201).json({
-        message: "Registration successful",
-        registration: savedRegistration,
-      });
-    } catch (error: any) {
-      console.error("Error:", error.message);
-      return res.status(500).json({ message: error.message });
-    }
-  }
-
-  async companySignin(req: Request, res: Response) {
-    try {
-      const { email, password } = req.body;
-
-      const user: any = await User.findOne({ email });
-      if (!user) {
-        return res.status(404).send("User does not exist!");
+      if (existingCompany) {
+        return res.status(409).json({ message: 'Company contact already registered' });
       }
-
-      const isPasswordValid = passwordHash.verify(
-        String(password),
-        user.password
-      );
-      if (!isPasswordValid) {
-        return res.status(401).send("Invalid Password!");
+      
+      // Check if admin phone exists
+      const existingUser = await User.findOne({ 
+        phone: adminPhone,
+        isDeleted: false 
+      });
+      if (existingUser) {
+        return res.status(409).json({ message: 'Admin phone already in use' });
       }
-
-      // Generate JWT
-      const token = jwt.sign(
-        {
-          id: user._id,
-          email: user.email,
-          userRole: user.userRole,
-          company: user.company,
+      
+      // Create company
+      const company = await Company.create({
+        name: companyName,
+        type: companyType,
+        contactEmail: contactEmail?.toLowerCase(),
+        contactPhone,
+        isActive: true
+      });
+      
+      // Create admin user linked to company
+      const adminUser = await User.create({
+        name: adminName,
+        email: adminEmail?.toLowerCase(),
+        phone: adminPhone,
+        password, // Will be hashed by pre-save hook
+        company: company._id,
+        userRole: USER_ROLES.ADMIN,
+        isVerified: true
+      });
+      
+      res.status(201).json({
+        message: 'Company registered successfully',
+        company: {
+          id: company._id,
+          name: company.name,
+          type: company.type
         },
-        process.env.JWT_SECRET || "secretkey",
-        { expiresIn: "7d" }
-      );
-
-      const options = {
-        maxAge: 60 * 60 * 24 * 7 * 1000, // 7 days
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-      };
-
-      const { password: pass, ...rest } = user.toObject();
-
-      return res
-        .status(200)
-        .cookie("SessionID", token, options)
-        .json({ user: rest });
+        admin: {
+          id: adminUser._id,
+          name: adminUser.name,
+          email: adminUser.email,
+          phone: adminUser.phone
+        }
+      });
     } catch (error: any) {
-      console.error("Error:", error.message);
-      return res.status(500).json({ message: error.message });
-    }
-  }
-
-  async companySignout(req: Request, res: Response) {
-    try {
-      res
-        .clearCookie("SessionID")
-        .status(200)
-        .json({ message: "Signout successful" });
-    } catch (error: any) {
-      console.error("Error:", error.message);
-      return res.status(500).json({ message: error.message });
+      console.error('Company registration error:', error);
+      if (error.code === 11000) {
+        return res.status(409).json({ message: 'Duplicate contact information' });
+      }
+      res.status(500).json({ message: 'Registration failed', error: error.message });
     }
   }
 }
