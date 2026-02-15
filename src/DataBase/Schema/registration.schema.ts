@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 
 const companyTypes = [
-  "family", "college", "university", "school", 
+  "family", "college", "university", "school",
   "institute", "company", "other"
 ] as const;
 
@@ -27,7 +27,7 @@ const companySchema = new mongoose.Schema({
   contactPhone: {
     type: String,
     required: [true, 'Contact phone is required'],
-    match: [/^\d{10,14}$/, 'Phone must be 10-14 digits']
+    match: [/^\+?[0-9\s-]{10,16}$/, 'Invalid phone number format']
   },
   isActive: {
     type: Boolean,

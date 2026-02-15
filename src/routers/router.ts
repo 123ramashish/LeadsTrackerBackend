@@ -7,8 +7,8 @@ import { authenticate } from "../middlewares/auth.middleware";
 
 const router = Router();
 
-router.use("/user", userRouter);
-router.use("/registration", registrationRouter);
+router.use("/users", userRouter);
+router.use("/companies", registrationRouter);
 router.use("/auth", authRouter);
 router.use("/notifications", notificationRouter);
 
