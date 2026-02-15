@@ -7,7 +7,6 @@ import cookieParser from "cookie-parser";
 import { CustomError } from "./middlewares/custom.error";
 import router from "./routers/router";
 import connectDB from "./DataBase/database";
-import "./routers/auto.router"
 const app = express();
 
 // middlewares
