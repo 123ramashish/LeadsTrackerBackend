@@ -1,0 +1,1221 @@
+{
+  "info": {
+    "name": "LeadTracker API",
+    "description": "Complete API collection for LeadTracker multi-company SaaS.\n\n## Setup\n1. Set `baseUrl` variable to your server (default: `http://localhost:3000`)\n2. Run **Init SuperAdmin** first, then **Login** to auto-populate tokens.\n3. Each role folder uses its own token variable (`superAdminToken`, `adminToken`, `userToken`).\n\n## Auto-token scripts\nLogin requests automatically save the token to the correct variable via Test scripts.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl",        "value": "http://localhost:3000",  "type": "string" },
+    { "key": "superAdminToken","value": "",                        "type": "string" },
+    { "key": "adminToken",     "value": "",                        "type": "string" },
+    { "key": "managerToken",   "value": "",                        "type": "string" },
+    { "key": "userToken",      "value": "",                        "type": "string" },
+    { "key": "companyId",      "value": "",                        "type": "string" },
+    { "key": "userId",         "value": "",                        "type": "string" },
+    { "key": "leadId",         "value": "",                        "type": "string" }
+  ],
+  "item": [
+
+    {
+      "name": "🔐 Auth",
+      "item": [
+
+        {
+          "name": "Init SuperAdmin (run once)",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "const r = pm.response.json();",
+                "if (r.user && r.user.id) {",
+                "  pm.collectionVariables.set('userId', r.user.id);",
+                "  console.log('SuperAdmin created:', r.user.id);",
+                "}"
+              ],
+              "type": "text/javascript"
+            }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/auth/superadmin/init", "host": ["{{baseUrl}}"], "path": ["api","auth","superadmin","init"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Super Admin\",\n  \"email\": \"superadmin@leadtracker.com\",\n  \"phone\": \"9000000000\",\n  \"password\": \"SuperAdmin@123\"\n}"
+            }
+          }
+        },
+
+        {
+          "name": "Login – SuperAdmin",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "const r = pm.response.json();",
+                "if (r.accessToken) {",
+                "  pm.collectionVariables.set('superAdminToken', r.accessToken);",
+                "  console.log('SuperAdmin token saved');",
+                "}",
+                "pm.test('Login successful', () => pm.response.to.have.status(200));",
+                "pm.test('Has accessToken', () => pm.expect(r.accessToken).to.be.a('string'));"
+              ],
+              "type": "text/javascript"
+            }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/auth/login", "host": ["{{baseUrl}}"], "path": ["api","auth","login"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identifier\": \"superadmin@leadtracker.com\",\n  \"password\": \"SuperAdmin@123\",\n  \"usePhone\": false\n}"
+            }
+          }
+        },
+
+        {
+          "name": "Login – Admin",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "const r = pm.response.json();",
+                "if (r.accessToken) {",
+                "  pm.collectionVariables.set('adminToken', r.accessToken);",
+                "  if (r.user && r.user.companyId) pm.collectionVariables.set('companyId', r.user.companyId);",
+                "  console.log('Admin token saved');",
+                "}"
+              ],
+              "type": "text/javascript"
+            }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/auth/login", "host": ["{{baseUrl}}"], "path": ["api","auth","login"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identifier\": \"admin@acme.com\",\n  \"password\": \"Admin@123\",\n  \"usePhone\": false\n}"
+            }
+          }
+        },
+
+        {
+          "name": "Login – User",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "const r = pm.response.json();",
+                "if (r.accessToken) {",
+                "  pm.collectionVariables.set('userToken', r.accessToken);",
+                "  console.log('User token saved');",
+                "}"
+              ],
+              "type": "text/javascript"
+            }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/auth/login", "host": ["{{baseUrl}}"], "path": ["api","auth","login"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identifier\": \"9876543212\",\n  \"password\": \"User@1234\",\n  \"usePhone\": true\n}"
+            }
+          }
+        },
+
+        {
+          "name": "Login – Phone (usePhone: true)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/auth/login", "host": ["{{baseUrl}}"], "path": ["api","auth","login"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identifier\": \"9000000000\",\n  \"password\": \"SuperAdmin@123\",\n  \"usePhone\": true\n}"
+            }
+          }
+        },
+
+        {
+          "name": "Login – Wrong Password (expect 401)",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('Returns 401', () => pm.response.to.have.status(401));",
+                "pm.test('Has attemptsLeft', () => {",
+                "  const r = pm.response.json();",
+                "  pm.expect(r).to.have.property('attemptsLeft');",
+                "});"
+              ],
+              "type": "text/javascript"
+            }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/auth/login", "host": ["{{baseUrl}}"], "path": ["api","auth","login"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identifier\": \"superadmin@leadtracker.com\",\n  \"password\": \"wrongpassword\"\n}"
+            }
+          }
+        },
+
+        {
+          "name": "Request OTP",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/auth/otp/request", "host": ["{{baseUrl}}"], "path": ["api","auth","otp","request"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identifier\": \"admin@acme.com\",\n  \"forPasswordReset\": true\n}"
+            }
+          }
+        },
+
+        {
+          "name": "Reset Password with OTP",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/auth/password/reset", "host": ["{{baseUrl}}"], "path": ["api","auth","password","reset"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identifier\": \"admin@acme.com\",\n  \"otp\": \"123456\",\n  \"newPassword\": \"NewAdmin@123\"\n}"
+            }
+          }
+        },
+
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/auth/logout", "host": ["{{baseUrl}}"], "path": ["api","auth","logout"] }
+          }
+        }
+
+      ]
+    },
+
+    {
+      "name": "🏢 Companies",
+      "item": [
+
+        {
+          "name": "Register Company (public)",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "const r = pm.response.json();",
+                "if (r.company && r.company.id) {",
+                "  pm.collectionVariables.set('companyId', r.company.id);",
+                "  console.log('Company ID saved:', r.company.id);",
+                "}",
+                "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                "pm.test('Has company.id', () => pm.expect(r.company.id).to.be.a('string'));"
+              ],
+              "type": "text/javascript"
+            }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/companies/register", "host": ["{{baseUrl}}"], "path": ["api","companies","register"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"companyName\": \"Acme Corp\",\n  \"companyType\": \"company\",\n  \"contactPhone\": \"9876543210\",\n  \"contactEmail\": \"contact@acme.com\",\n  \"industry\": \"Technology\",\n  \"website\": \"https://acme.com\",\n  \"address\": \"123 Main St, Mumbai\",\n  \"adminName\": \"Admin User\",\n  \"adminPhone\": \"9876543211\",\n  \"adminEmail\": \"admin@acme.com\",\n  \"password\": \"Admin@123\"\n}"
+            }
+          }
+        },
+
+        {
+          "name": "Register Company – Duplicate (expect 409)",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('Returns 409', () => pm.response.to.have.status(409));"
+              ],
+              "type": "text/javascript"
+            }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/companies/register", "host": ["{{baseUrl}}"], "path": ["api","companies","register"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"companyName\": \"Acme Corp\",\n  \"companyType\": \"company\",\n  \"contactPhone\": \"9876543210\",\n  \"contactEmail\": \"contact@acme.com\",\n  \"adminName\": \"Admin 2\",\n  \"adminPhone\": \"9876543299\",\n  \"password\": \"Admin@123\"\n}"
+            }
+          }
+        },
+
+        {
+          "name": "Get All Companies (SuperAdmin)",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                "pm.test('Has pagination', () => {",
+                "  const r = pm.response.json();",
+                "  pm.expect(r).to.have.property('pagination');",
+                "  pm.expect(r.data).to.be.an('array');",
+                "});"
+              ],
+              "type": "text/javascript"
+            }
+          }],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{superAdminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/companies?page=1&limit=10",
+              "host": ["{{baseUrl}}"], "path": ["api","companies"],
+              "query": [
+                { "key": "page",     "value": "1" },
+                { "key": "limit",    "value": "10" },
+                { "key": "isActive", "value": "true",   "disabled": true },
+                { "key": "type",     "value": "company", "disabled": true },
+                { "key": "search",   "value": "Acme",   "disabled": true }
+              ]
+            }
+          }
+        },
+
+        {
+          "name": "Get All Companies – Unauthorized (expect 403)",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": ["pm.test('Returns 403', () => pm.response.to.have.status(403));"],
+              "type": "text/javascript"
+            }
+          }],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/companies", "host": ["{{baseUrl}}"], "path": ["api","companies"] }
+          }
+        },
+
+        {
+          "name": "Get Company by ID (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/companies/{{companyId}}", "host": ["{{baseUrl}}"], "path": ["api","companies","{{companyId}}"] }
+          }
+        },
+
+        {
+          "name": "Update Company (Admin)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type",  "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/companies/{{companyId}}", "host": ["{{baseUrl}}"], "path": ["api","companies","{{companyId}}"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"address\": \"456 New St, Delhi\",\n  \"website\": \"https://acme-updated.com\",\n  \"industry\": \"SaaS\"\n}"
+            }
+          }
+        },
+
+        {
+          "name": "Update Company isActive (SuperAdmin only)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type",  "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superAdminToken}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/companies/{{companyId}}", "host": ["{{baseUrl}}"], "path": ["api","companies","{{companyId}}"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isActive\": false\n}"
+            }
+          }
+        },
+
+        {
+          "name": "Delete Company (SuperAdmin)",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": ["pm.test('Status 200', () => pm.response.to.have.status(200));"],
+              "type": "text/javascript"
+            }
+          }],
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{superAdminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/companies/{{companyId}}", "host": ["{{baseUrl}}"], "path": ["api","companies","{{companyId}}"] }
+          }
+        }
+
+      ]
+    },
+
+    {
+      "name": "👤 Users",
+      "item": [
+
+        {
+          "name": "Get My Profile",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                "pm.test('No password field', () => {",
+                "  const r = pm.response.json();",
+                "  pm.expect(r.data).to.not.have.property('password');",
+                "});"
+              ],
+              "type": "text/javascript"
+            }
+          }],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/users/me", "host": ["{{baseUrl}}"], "path": ["api","users","me"] }
+          }
+        },
+
+        {
+          "name": "Update My Profile",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type",  "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/users/me", "host": ["{{baseUrl}}"], "path": ["api","users","me"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Admin Updated Name\",\n  \"email\": \"admin-updated@acme.com\"\n}"
+            }
+          }
+        },
+
+        {
+          "name": "Change My Password",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": ["pm.test('Status 200', () => pm.response.to.have.status(200));"],
+              "type": "text/javascript"
+            }
+          }],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type",  "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/users/me/password", "host": ["{{baseUrl}}"], "path": ["api","users","me","password"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"Admin@123\",\n  \"newPassword\": \"NewAdmin@456\"\n}"
+            }
+          }
+        },
+
+        {
+          "name": "Change My Password – Wrong Current (expect 401)",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": ["pm.test('Returns 401', () => pm.response.to.have.status(401));"],
+              "type": "text/javascript"
+            }
+          }],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type",  "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/users/me/password", "host": ["{{baseUrl}}"], "path": ["api","users","me","password"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"WrongPassword\",\n  \"newPassword\": \"NewAdmin@456\"\n}"
+            }
+          }
+        },
+
+        {
+          "name": "Create User (Admin creates regular user)",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "const r = pm.response.json();",
+                "if (r.data && r.data.id) pm.collectionVariables.set('userId', r.data.id);",
+                "pm.test('Status 201', () => pm.response.to.have.status(201));"
+              ],
+              "type": "text/javascript"
+            }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type",  "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/users", "host": ["{{baseUrl}}"], "path": ["api","users"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Sales User\",\n  \"email\": \"sales@acme.com\",\n  \"phone\": \"9876543212\",\n  \"password\": \"User@1234\",\n  \"userRole\": \"user\"\n}"
+            }
+          }
+        },
+
+        {
+          "name": "Create Manager (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type",  "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/users", "host": ["{{baseUrl}}"], "path": ["api","users"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Sales Manager\",\n  \"email\": \"manager@acme.com\",\n  \"phone\": \"9876543213\",\n  \"password\": \"Manager@123\",\n  \"userRole\": \"manager\"\n}"
+            }
+          }
+        },
+
+        {
+          "name": "Create User for Another Company (expect 403)",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": ["pm.test('Returns 403', () => pm.response.to.have.status(403));"],
+              "type": "text/javascript"
+            }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type",  "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/users", "host": ["{{baseUrl}}"], "path": ["api","users"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Intruder\",\n  \"phone\": \"9000000099\",\n  \"password\": \"Test@1234\",\n  \"companyId\": \"000000000000000000000001\"\n}"
+            }
+          }
+        },
+
+        {
+          "name": "Create SuperAdmin by Admin (expect 403)",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": ["pm.test('Returns 403', () => pm.response.to.have.status(403));"],
+              "type": "text/javascript"
+            }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type",  "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/users", "host": ["{{baseUrl}}"], "path": ["api","users"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Fake SA\",\n  \"phone\": \"9000000098\",\n  \"password\": \"Test@1234\",\n  \"userRole\": \"superAdmin\"\n}"
+            }
+          }
+        },
+
+        {
+          "name": "Get All Users (Admin – own company)",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                "pm.test('All users belong to same company', () => {",
+                "  const r = pm.response.json();",
+                "  const companyId = pm.collectionVariables.get('companyId');",
+                "  r.data.forEach(u => {",
+                "    if (u.company && u.company._id) {",
+                "      pm.expect(u.company._id).to.equal(companyId);",
+                "    }",
+                "  });",
+                "});"
+              ],
+              "type": "text/javascript"
+            }
+          }],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/users?page=1&limit=20",
+              "host": ["{{baseUrl}}"], "path": ["api","users"],
+              "query": [
+                { "key": "page",     "value": "1" },
+                { "key": "limit",    "value": "20" },
+                { "key": "role",     "value": "user",  "disabled": true },
+                { "key": "search",   "value": "sales", "disabled": true },
+                { "key": "isLocked", "value": "false", "disabled": true }
+              ]
+            }
+          }
+        },
+
+        {
+          "name": "Get All Users (SuperAdmin – filter by company)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{superAdminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/users?company={{companyId}}",
+              "host": ["{{baseUrl}}"], "path": ["api","users"],
+              "query": [{ "key": "company", "value": "{{companyId}}" }]
+            }
+          }
+        },
+
+        {
+          "name": "Get User by ID",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/users/{{userId}}", "host": ["{{baseUrl}}"], "path": ["api","users","{{userId}}"] }
+          }
+        },
+
+        {
+          "name": "Update User (Admin)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type",  "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/users/{{userId}}", "host": ["{{baseUrl}}"], "path": ["api","users","{{userId}}"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Sales User Updated\",\n  \"isVerified\": true\n}"
+            }
+          }
+        },
+
+        {
+          "name": "Lock User (Admin)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type",  "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/users/{{userId}}", "host": ["{{baseUrl}}"], "path": ["api","users","{{userId}}"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isLocked\": true\n}"
+            }
+          }
+        },
+
+        {
+          "name": "Unlock User (Admin)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type",  "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/users/{{userId}}", "host": ["{{baseUrl}}"], "path": ["api","users","{{userId}}"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isLocked\": false\n}"
+            }
+          }
+        },
+
+        {
+          "name": "Admin Reset User Password",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type",  "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/users/{{userId}}/password", "host": ["{{baseUrl}}"], "path": ["api","users","{{userId}}","password"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"newPassword\": \"Reset@12345\"\n}"
+            }
+          }
+        },
+
+        {
+          "name": "Delete User (Admin)",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": ["pm.test('Status 200', () => pm.response.to.have.status(200));"],
+              "type": "text/javascript"
+            }
+          }],
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/users/{{userId}}", "host": ["{{baseUrl}}"], "path": ["api","users","{{userId}}"] }
+          }
+        },
+
+        {
+          "name": "Delete Self (expect 400)",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": ["pm.test('Returns 400', () => pm.response.to.have.status(400));"],
+              "type": "text/javascript"
+            }
+          }],
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/users/{{userId}}", "host": ["{{baseUrl}}"], "path": ["api","users","{{userId}}"] }
+          }
+        }
+
+      ]
+    },
+
+    {
+      "name": "📋 Leads",
+      "item": [
+
+        {
+          "name": "Create Lead",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "const r = pm.response.json();",
+                "if (r.data && r.data._id) {",
+                "  pm.collectionVariables.set('leadId', r.data._id);",
+                "  console.log('Lead ID saved:', r.data._id);",
+                "}",
+                "pm.test('Status 201', () => pm.response.to.have.status(201));"
+              ],
+              "type": "text/javascript"
+            }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type",  "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/leads", "host": ["{{baseUrl}}"], "path": ["api","leads"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Rajesh Kumar\",\n  \"email\": \"rajesh@prospect.com\",\n  \"phone\": \"9123456789\",\n  \"organization\": \"Prospect Pvt Ltd\",\n  \"title\": \"Enterprise Software Deal\",\n  \"description\": \"Interested in our CRM solution for 500 employees\",\n  \"source\": \"referral\",\n  \"priority\": \"high\",\n  \"status\": \"new\",\n  \"value\": 250000,\n  \"currency\": \"INR\",\n  \"followUpDate\": \"2025-02-25T10:00:00Z\",\n  \"expectedCloseDate\": \"2025-03-31T00:00:00Z\",\n  \"tags\": [\"enterprise\", \"crm\", \"hot-lead\"]\n}"
+            }
+          }
+        },
+
+        {
+          "name": "Create Lead – Missing Required Fields (expect 400)",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": ["pm.test('Returns 400', () => pm.response.to.have.status(400));"],
+              "type": "text/javascript"
+            }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type",  "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/leads", "host": ["{{baseUrl}}"], "path": ["api","leads"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Incomplete Lead\"\n}"
+            }
+          }
+        },
+
+        {
+          "name": "Get All Leads (default)",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                "pm.test('Has pagination', () => {",
+                "  const r = pm.response.json();",
+                "  pm.expect(r.pagination).to.have.property('total');",
+                "});"
+              ],
+              "type": "text/javascript"
+            }
+          }],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/leads?page=1&limit=10",
+              "host": ["{{baseUrl}}"], "path": ["api","leads"],
+              "query": [
+                { "key": "page",   "value": "1" },
+                { "key": "limit",  "value": "10" }
+              ]
+            }
+          }
+        },
+
+        {
+          "name": "Get Leads – Filter by Status",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/leads?status=new",
+              "host": ["{{baseUrl}}"], "path": ["api","leads"],
+              "query": [{ "key": "status", "value": "new" }]
+            }
+          }
+        },
+
+        {
+          "name": "Get Leads – Filter by Priority",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/leads?priority=high",
+              "host": ["{{baseUrl}}"], "path": ["api","leads"],
+              "query": [{ "key": "priority", "value": "high" }]
+            }
+          }
+        },
+
+        {
+          "name": "Get Leads – Search",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/leads?search=Rajesh",
+              "host": ["{{baseUrl}}"], "path": ["api","leads"],
+              "query": [{ "key": "search", "value": "Rajesh" }]
+            }
+          }
+        },
+
+        {
+          "name": "Get Leads – Filter by Tags",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/leads?tags=enterprise,hot-lead",
+              "host": ["{{baseUrl}}"], "path": ["api","leads"],
+              "query": [{ "key": "tags", "value": "enterprise,hot-lead" }]
+            }
+          }
+        },
+
+        {
+          "name": "Get Leads – Filter by Date Range",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/leads?fromDate=2025-01-01&toDate=2025-12-31",
+              "host": ["{{baseUrl}}"], "path": ["api","leads"],
+              "query": [
+                { "key": "fromDate", "value": "2025-01-01" },
+                { "key": "toDate",   "value": "2025-12-31" }
+              ]
+            }
+          }
+        },
+
+        {
+          "name": "Get Leads – Follow-Up Date Range",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/leads?followUpFrom=2025-02-01&followUpTo=2025-02-28",
+              "host": ["{{baseUrl}}"], "path": ["api","leads"],
+              "query": [
+                { "key": "followUpFrom", "value": "2025-02-01" },
+                { "key": "followUpTo",   "value": "2025-02-28" }
+              ]
+            }
+          }
+        },
+
+        {
+          "name": "Get Lead by ID",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                "pm.test('Has activityLog', () => {",
+                "  const r = pm.response.json();",
+                "  pm.expect(r.data.activityLog).to.be.an('array');",
+                "});"
+              ],
+              "type": "text/javascript"
+            }
+          }],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/leads/{{leadId}}", "host": ["{{baseUrl}}"], "path": ["api","leads","{{leadId}}"] }
+          }
+        },
+
+        {
+          "name": "Update Lead",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type",  "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/leads/{{leadId}}", "host": ["{{baseUrl}}"], "path": ["api","leads","{{leadId}}"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"value\": 350000,\n  \"priority\": \"urgent\",\n  \"description\": \"Updated: Now looking for full enterprise suite\",\n  \"tags\": [\"enterprise\", \"crm\", \"hot-lead\", \"upsell\"],\n  \"notes\": \"Client responded positively to demo\"\n}"
+            }
+          }
+        },
+
+        {
+          "name": "Update Lead Status → contacted",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                "pm.test('Status updated', () => {",
+                "  const r = pm.response.json();",
+                "  pm.expect(r.data.status).to.equal('contacted');",
+                "});"
+              ],
+              "type": "text/javascript"
+            }
+          }],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type",  "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/leads/{{leadId}}/status", "host": ["{{baseUrl}}"], "path": ["api","leads","{{leadId}}","status"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"contacted\",\n  \"notes\": \"Initial call completed, scheduled follow-up\"\n}"
+            }
+          }
+        },
+
+        {
+          "name": "Update Lead Status → qualified",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type",  "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/leads/{{leadId}}/status", "host": ["{{baseUrl}}"], "path": ["api","leads","{{leadId}}","status"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"qualified\",\n  \"notes\": \"Budget confirmed, decision maker identified\"\n}"
+            }
+          }
+        },
+
+        {
+          "name": "Update Lead Status → won (auto-sets closedAt)",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                "pm.test('closedAt is set', () => {",
+                "  const r = pm.response.json();",
+                "  pm.expect(r.data.closedAt).to.not.be.undefined;",
+                "});"
+              ],
+              "type": "text/javascript"
+            }
+          }],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type",  "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/leads/{{leadId}}/status", "host": ["{{baseUrl}}"], "path": ["api","leads","{{leadId}}","status"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"won\",\n  \"notes\": \"Contract signed! Deal closed at ₹3.5L\"\n}"
+            }
+          }
+        },
+
+        {
+          "name": "Update Lead Status – Invalid (expect 400)",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": ["pm.test('Returns 400', () => pm.response.to.have.status(400));"],
+              "type": "text/javascript"
+            }
+          }],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type",  "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/leads/{{leadId}}/status", "host": ["{{baseUrl}}"], "path": ["api","leads","{{leadId}}","status"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"invalid_status\"\n}"
+            }
+          }
+        },
+
+        {
+          "name": "Add Activity Note",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type",  "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/leads/{{leadId}}/activity", "host": ["{{baseUrl}}"], "path": ["api","leads","{{leadId}}","activity"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"Email sent\",\n  \"notes\": \"Sent proposal document via email. Awaiting response by Friday.\"\n}"
+            }
+          }
+        },
+
+        {
+          "name": "Add Activity Note – Call",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type",  "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/leads/{{leadId}}/activity", "host": ["{{baseUrl}}"], "path": ["api","leads","{{leadId}}","activity"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"Phone call\",\n  \"notes\": \"30 min call. Client needs board approval. Reschedule for next week.\"\n}"
+            }
+          }
+        },
+
+        {
+          "name": "Get Lead Stats (Dashboard)",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                "pm.test('Has byStatus', () => {",
+                "  const r = pm.response.json();",
+                "  pm.expect(r.data).to.have.property('byStatus');",
+                "  pm.expect(r.data).to.have.property('wonValue');",
+                "});"
+              ],
+              "type": "text/javascript"
+            }
+          }],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/leads/stats", "host": ["{{baseUrl}}"], "path": ["api","leads","stats"] }
+          }
+        },
+
+        {
+          "name": "Get Lead Stats (SuperAdmin – all companies)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{superAdminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/leads/stats", "host": ["{{baseUrl}}"], "path": ["api","leads","stats"] }
+          }
+        },
+
+        {
+          "name": "Delete Lead",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": ["pm.test('Status 200', () => pm.response.to.have.status(200));"],
+              "type": "text/javascript"
+            }
+          }],
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/leads/{{leadId}}", "host": ["{{baseUrl}}"], "path": ["api","leads","{{leadId}}"] }
+          }
+        },
+
+        {
+          "name": "Get Deleted Lead (expect 404)",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": ["pm.test('Returns 404', () => pm.response.to.have.status(404));"],
+              "type": "text/javascript"
+            }
+          }],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/leads/{{leadId}}", "host": ["{{baseUrl}}"], "path": ["api","leads","{{leadId}}"] }
+          }
+        }
+
+      ]
+    },
+
+    {
+      "name": "🛡️ Security & Edge Cases",
+      "item": [
+
+        {
+          "name": "No Token (expect 401)",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": ["pm.test('Returns 401', () => pm.response.to.have.status(401));"],
+              "type": "text/javascript"
+            }
+          }],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/users/me", "host": ["{{baseUrl}}"], "path": ["api","users","me"] }
+          }
+        },
+
+        {
+          "name": "Malformed Token (expect 401)",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": ["pm.test('Returns 401', () => pm.response.to.have.status(401));"],
+              "type": "text/javascript"
+            }
+          }],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer not.a.valid.token" }],
+            "url": { "raw": "{{baseUrl}}/api/users/me", "host": ["{{baseUrl}}"], "path": ["api","users","me"] }
+          }
+        },
+
+        {
+          "name": "User accesses admin route (expect 403)",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": ["pm.test('Returns 403', () => pm.response.to.have.status(403));"],
+              "type": "text/javascript"
+            }
+          }],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{userToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/users", "host": ["{{baseUrl}}"], "path": ["api","users"] }
+          }
+        },
+
+        {
+          "name": "Invalid ObjectId (expect 400)",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": ["pm.test('Returns 400', () => pm.response.to.have.status(400));"],
+              "type": "text/javascript"
+            }
+          }],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/leads/not-an-objectid", "host": ["{{baseUrl}}"], "path": ["api","leads","not-an-objectid"] }
+          }
+        },
+
+        {
+          "name": "Health Check",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                "pm.test('Status ok', () => {",
+                "  pm.expect(pm.response.json().status).to.equal('ok');",
+                "});"
+              ],
+              "type": "text/javascript"
+            }
+          }],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"], "path": ["health"] }
+          }
+        },
+
+        {
+          "name": "404 Route (expect 404)",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": ["pm.test('Returns 404', () => pm.response.to.have.status(404));"],
+              "type": "text/javascript"
+            }
+          }],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/nonexistent", "host": ["{{baseUrl}}"], "path": ["api","nonexistent"] }
+          }
+        }
+
+      ]
+    }
+
+  ]
+}
