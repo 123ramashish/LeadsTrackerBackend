@@ -7,6 +7,7 @@ import cookieParser from "cookie-parser";
 import { CustomError } from "./middlewares/custom.error";
 import router from "./routers/router";
 import connectDB from "./DataBase/database";
+
 const app = express();
 
 // middlewares
@@ -19,12 +20,13 @@ app.use(cookieParser());
 // routers
 app.use("/api", router);
 
-app.use((req, res, next) => {
+// 404 handler — prefix unused params with _
+app.use((_req: Request, _res: Response, next: NextFunction) => {
   next(new CustomError("API route not found", 404));
 });
 
-// global error handling
-app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+// global error handling — prefix unused next with _
+app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
   if (err instanceof CustomError) {
     return res.status(err.status).json({ error: err.message });
   }
@@ -33,7 +35,8 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
 });
 
 // Connect DB and Start Server
-app.listen(process.env.PORT, async () => {
+const PORT = process.env.PORT || 8000;
+app.listen(PORT, async () => {
   await connectDB();
-  console.log(`Listening ON port ${process.env.PORT || 8000}`);
+  console.log(`Listening ON port ${PORT}`);
 });

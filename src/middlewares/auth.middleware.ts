@@ -1,9 +1,8 @@
 import * as dotenv from 'dotenv';
 dotenv.config();
-import { Request, Response, NextFunction } from "express";
+import { NextFunction, Request, Response } from "express";
 import jwt from "jsonwebtoken";
 import User from "../DataBase/Schema/user.schema";
-import mongoose from 'mongoose';
 
 interface AuthRequest extends Request {
   user?: any;
@@ -74,7 +73,7 @@ export const authenticate = async (
 
 // ✅ Role-based authorization
 export const authorizeRoles = (roles: string[]) => {
-  return (req: AuthRequest, res: Response, next: NextFunction) => {
+  return (req: AuthRequest, res: Response, next:NextFunction) => {
     if (!req.user || !roles.includes(req.user.role)) {
       return res
         .status(403)
