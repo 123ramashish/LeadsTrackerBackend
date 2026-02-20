@@ -3,88 +3,88 @@ import { authenticate, authorizeRoles } from '../middlewares/auth.middleware';
 import { USER_ROLES } from '../controller/lead.controller';
 import LeadController from '../controller/lead.controller';
 
-const router = Router();
+const leadRouter = Router();
 const leadController = new LeadController();
 
 // ===== CRUD OPERATIONS =====
-router.post('/', authenticate, leadController.createLead.bind(leadController));
-router.get('/', authenticate, leadController.getLeads.bind(leadController));
-router.get('/:id', authenticate, leadController.getLeadById.bind(leadController));
-router.put('/:id', authenticate, leadController.updateLead.bind(leadController));
+leadRouter.post('/', authenticate, leadController.createLead.bind(leadController));
+leadRouter.get('/', authenticate, leadController.getLeads.bind(leadController));
+leadRouter.get('/:id', authenticate, leadController.getLeadById.bind(leadController));
+leadRouter.put('/:id', authenticate, leadController.updateLead.bind(leadController));
 
 // ===== STATUS & TYPE MANAGEMENT =====
-router.patch(
+leadRouter.patch(
   '/:id/status',
   authenticate,
   leadController.updateLeadStatus.bind(leadController)
 );
-router.patch(
+leadRouter.patch(
   '/:id/type',
   authenticate,
   leadController.updateLeadType.bind(leadController)
 );
-router.patch(
+leadRouter.patch(
   '/:id/priority',
   authenticate,
   leadController.updateLeadPriority.bind(leadController)
 );
-router.patch(
+leadRouter.patch(
   '/:id/favorite',
   authenticate,
   leadController.toggleFavorite.bind(leadController)
 );
 
 // ===== ASSIGNMENT & FOLLOW-UP =====
-router.patch(
+leadRouter.patch(
   '/:id/assign',
   authenticate,
-  authorizeRoles([USER_ROLES.ADMIN, USER_ROLES.SUPER_ADMIN]),
+  authorizeRoles([USER_ROLES.ADMIN]),
   leadController.assignLead.bind(leadController)
 );
-router.post(
+leadRouter.post(
   '/:id/follow-up',
   authenticate,
   leadController.scheduleFollowUp.bind(leadController)
 );
 
 // ===== NOTES & ACTIVITIES =====
-router.post(
+leadRouter.post(
   '/:id/notes',
   authenticate,
   leadController.addNote.bind(leadController)
 );
 
 // ===== DELETE OPERATIONS =====
-router.delete(
+leadRouter.delete(
   '/:id',
   authenticate,
-  authorizeRoles([USER_ROLES.ADMIN, USER_ROLES.SUPER_ADMIN]),
+  authorizeRoles([USER_ROLES.ADMIN]),
   leadController.deleteLead.bind(leadController)
 );
 
 // ===== BULK OPERATIONS =====
-router.patch(
+leadRouter.patch(
   '/bulk/status',
   authenticate,
-  authorizeRoles([USER_ROLES.ADMIN, USER_ROLES.SUPER_ADMIN]),
+  authorizeRoles([USER_ROLES.ADMIN]),
   leadController.bulkUpdateStatus.bind(leadController)
 );
 
 // ===== ANALYTICS & REPORTS =====
-router.get(
+leadRouter.get(
   '/analytics/overview',
   authenticate,
   leadController.getLeadAnalytics.bind(leadController)
 );
-router.get(
+leadRouter.get(
   '/analytics/funnel',
   authenticate,
   leadController.getConversionFunnel.bind(leadController)
 );
-router.get(
+leadRouter.get(
   '/analytics/overdue',
   authenticate,
   leadController.getOverdueFollowUps.bind(leadController)
 );
 
-export default router;
+export default leadRouter;

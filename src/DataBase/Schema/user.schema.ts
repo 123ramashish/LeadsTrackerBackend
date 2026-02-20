@@ -137,7 +137,7 @@ userSchema.pre('save', async function (next) {
     return next(new Error('Cannot delete the last SuperAdmin account'));
   }
   next();
-});
+});``
 
 const User = mongoose.model<IUser, IUserModel>('User', userSchema);
 export default User;

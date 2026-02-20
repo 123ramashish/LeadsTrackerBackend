@@ -1,15 +1,19 @@
 import { Router } from "express";
-import userRouter from "./user.router";
-import registrationRouter from "./registration.router";
-import authRouter from "./auth.router";
 import notificationRouter from "./notification.router";
 import { authenticate } from "../middlewares/auth.middleware";
+import { userRouter } from "./user.router";
+import { authRouter } from "./auth.router";
+import { companyRouter } from "./company.router";
+import chatRouter from "./chat.router";
+import leadRouter from "./lead.router";
 
 const router = Router();
 
 router.use("/users", userRouter);
-router.use("/companies", registrationRouter);
+router.use("/companies", companyRouter);
 router.use("/auth", authRouter);
+router.use("/chat", chatRouter);
+router.use("/leads", leadRouter);
 router.use("/notifications", notificationRouter);
 
 router.use("/", (req, res) => {

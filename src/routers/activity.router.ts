@@ -130,7 +130,7 @@ router.get('/recent', authenticate, async (req: AuthRequest, res: Response) => {
 router.get(
   '/statistics',
   authenticate,
-  authorizeRoles([USER_ROLES.ADMIN, USER_ROLES.SUPER_ADMIN]),
+  authorizeRoles([USER_ROLES.ADMIN]),
   async (req: AuthRequest, res: Response) => {
     try {
       const { dateFrom, dateTo } = req.query;

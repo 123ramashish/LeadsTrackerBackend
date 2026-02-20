@@ -109,7 +109,7 @@ export default class ChatController {
       // Update lead score
       const updatedLead = await Lead.findById(leadId);
       if (updatedLead) {
-        await updatedLead.updateScore();
+        // await updatedLead.updateScore();
         await updatedLead.save();
       }
 
