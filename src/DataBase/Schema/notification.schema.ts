@@ -1,6 +1,6 @@
 import mongoose, { Document, Schema } from "mongoose";
 
-export interface INotification extends Document {
+export interface INotification  {
   _id: string;
   title: string;
   description: string;

@@ -201,7 +201,7 @@ export default class CompanyController {
   // ─── GET SINGLE COMPANY ───────────────────────────────────────────────────
   async getCompany(req: AuthRequest, res: Response): Promise<void> {
     try {
-      const { id } = req.params;
+      const { id } = req.params as any;
       const currentUser:any = req.user;
 
       // Non-SuperAdmins can only view their own company
@@ -232,7 +232,7 @@ export default class CompanyController {
   // ─── UPDATE COMPANY ───────────────────────────────────────────────────────
   async updateCompany(req: AuthRequest, res: Response): Promise<void> {
     try {
-      const { id } = req.params;
+      const { id } = req.params as any;
       const currentUser :any= req.user;
 
       // Non-SuperAdmins can only update their own company
@@ -312,7 +312,7 @@ export default class CompanyController {
     session.startTransaction();
 
     try {
-      const { id } = req.params;
+      const { id } = req.params as any;
 
       if (!mongoose.Types.ObjectId.isValid(id)) {
         await session.abortTransaction();

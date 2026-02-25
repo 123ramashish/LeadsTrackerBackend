@@ -228,7 +228,7 @@ export default class ChatController {
   // 📜 GET CHAT HISTORY FOR LEAD
   async getChatHistory(req: AuthRequest, res: Response) {
     try {
-      const { leadId } = req.params;
+      const { leadId } = req.params as any;
       const { limit = 50, page = 1 } = req.query;
       const currentUser = req.user!;
 
@@ -295,7 +295,7 @@ export default class ChatController {
   // 👁️ MARK MESSAGES AS READ
   async markLeadMessagesAsRead(req: AuthRequest, res: Response) {
     try {
-      const { leadId } = req.params;
+      const { leadId } = req.params as any;
       const currentUser = req.user!;
 
       if (!mongoose.Types.ObjectId.isValid(leadId)) {
@@ -520,7 +520,7 @@ export default class ChatController {
   // 🗑️ DELETE MESSAGE (Admin only)
   async deleteMessage(req: AuthRequest, res: Response) {
     try {
-      const { id } = req.params;
+      const { id } = req.params as any;
       const currentUser = req.user!;
 
       if (!mongoose.Types.ObjectId.isValid(id)) {

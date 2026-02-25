@@ -160,8 +160,7 @@ chatSchema.statics.getLastMessage = async function (
   leadId: string
 ): Promise<IChat | null> {
   return this.findOne({ leadId: new mongoose.Types.ObjectId(leadId) })
-    .sort({ sentAt: -1 })
-    .lean();
+    .sort({ sentAt: -1 });
 };
 
 // ===== INSTANCE METHODS =====

@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import mongoose from 'mongoose';
 import Lead, { ILead, LeadStatus, LeadType, LeadSource, LeadPriority } from '../DataBase/Schema/Leads.schema';
 import Activity, { ActivityType } from '../DataBase/Schema/Activity.schema';
-import Company from '../DataBase/Schema/registration.schema';
+import Company from '../DataBase/Schema/company.schema';
 
 // User roles enum (import from your user schema)
 export enum USER_ROLES {
@@ -95,7 +95,6 @@ export default class LeadController {
         }
         companyId = req.body.company;
       }
-
       // Validate enums
       if (!Object.values(LeadStatus).includes(status)) {
         return res.status(400).json({ message: 'Invalid lead status' });
@@ -135,7 +134,7 @@ export default class LeadController {
       });
 
       // Calculate initial score
-      await newLead.updateScore();
+      // await newLead.updateScore();
       await newLead.save();
 
       // Log activity
@@ -181,8 +180,8 @@ export default class LeadController {
         dateFrom, dateTo,
         sortBy = 'createdAt',
         sortOrder = 'desc',
-        page = 1, 
-        limit = 20 
+        page = '1', 
+        limit = '20' 
       } = req.query;
       const currentUser = req.user!;
 
@@ -289,7 +288,7 @@ export default class LeadController {
   // 🔍 GET SINGLE LEAD WITH ACTIVITY TIMELINE
   async getLeadById(req: AuthRequest, res: Response) {
     try {
-      const { id } = req.params;
+      const { id } = req.params as any;
       const { includeTimeline = 'true' } = req.query;
       const currentUser = req.user!;
 
@@ -335,7 +334,7 @@ export default class LeadController {
   // ✏️ UPDATE LEAD
   async updateLead(req: AuthRequest, res: Response) {
     try {
-      const { id } = req.params;
+      const { id } = req.params as any;
       const updateFields = req.body;
       const currentUser = req.user!;
 
@@ -418,7 +417,7 @@ export default class LeadController {
   // 🚦 UPDATE STATUS
   async updateLeadStatus(req: AuthRequest, res: Response) {
     try {
-      const { id } = req.params;
+      const { id } = req.params as any;
       const { status, notes } = req.body;
       const currentUser = req.user!;
 
@@ -458,7 +457,7 @@ export default class LeadController {
 
       // Update score
       if (lead) {
-        await lead.updateScore();
+        // await lead.updateScore();
         await lead.save();
       }
 
@@ -492,7 +491,7 @@ export default class LeadController {
   // 🏷️ UPDATE TYPE
   async updateLeadType(req: AuthRequest, res: Response) {
     try {
-      const { id } = req.params;
+      const { id } = req.params as any;
       const { type } = req.body;
       const currentUser = req.user!;
 
@@ -544,7 +543,7 @@ export default class LeadController {
   // 🎯 UPDATE PRIORITY
   async updateLeadPriority(req: AuthRequest, res: Response) {
     try {
-      const { id } = req.params;
+      const { id } = req.params as any;
       const { priority } = req.body;
       const currentUser = req.user!;
 
@@ -596,7 +595,7 @@ export default class LeadController {
   // 👤 ASSIGN LEAD
   async assignLead(req: AuthRequest, res: Response) {
     try {
-      const { id } = req.params;
+      const { id } = req.params as any;
       const { assignedTo } = req.body;
       const currentUser = req.user!;
 
@@ -690,7 +689,7 @@ export default class LeadController {
   // 📅 SCHEDULE FOLLOW-UP
   async scheduleFollowUp(req: AuthRequest, res: Response) {
     try {
-      const { id } = req.params;
+      const { id } = req.params as any;
       const { followUpDate, notes } = req.body;
       const currentUser = req.user!;
 
@@ -746,7 +745,7 @@ export default class LeadController {
   // 📝 ADD NOTE
   async addNote(req: AuthRequest, res: Response) {
     try {
-      const { id } = req.params;
+      const { id } = req.params as any;
       const { note } = req.body;
       const currentUser = req.user!;
 
@@ -790,7 +789,7 @@ export default class LeadController {
   // 🗑️ SOFT DELETE
   async deleteLead(req: AuthRequest, res: Response) {
     try {
-      const { id } = req.params;
+      const { id } = req.params as any;
       const currentUser = req.user!;
 
       if (!mongoose.Types.ObjectId.isValid(id)) {
