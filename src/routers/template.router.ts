@@ -1,12 +1,10 @@
 // src/routes/templateRoutes.ts
 import { Router } from 'express';
-import {
-  getTemplateById,
-  createTemplate,
+import { getTemplateById,  createTemplate,
   updateTemplate,
   deleteTemplate,
   incrementTemplateUsage,
-} from '../controllers/templateController.js';
+  getTemplates, } from '../controller/template.controller';
 
 const router = Router();
 

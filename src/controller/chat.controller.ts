@@ -3,7 +3,7 @@ import mongoose from 'mongoose';
 import Chat, { IChat, MessageSender } from '../DataBase/Schema/Chat.schema';
 import Lead from '../DataBase/Schema/Leads.schema';
 import Activity, { ActivityType } from '../DataBase/Schema/Activity.schema';
-import { USER_ROLES } from './lead.controller';
+import { USER_ROLES } from '../types';
 
 interface AuthRequest extends Request {
   user?: {

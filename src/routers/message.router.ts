@@ -11,7 +11,7 @@ import {
   deleteMessage,
   triggerBulkFollowUp,
   getMessages,
-} from '../controller/message.controller.js';
+} from '../controller/message.controller';
 
 const router = Router();
 

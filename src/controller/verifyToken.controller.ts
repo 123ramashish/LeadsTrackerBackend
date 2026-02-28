@@ -30,7 +30,7 @@ export const verifyToken = async (req: Request, res: Response) => {
           return res.status(401).json({ message: "Invalid token" });
         }
 
-        const user = await User.findById(userId);
+        const user:any = await User.findById(userId);
         if (!user || !user.refreshToken) {
           return res.status(401).json({ message: "Refresh token not found" });
         }

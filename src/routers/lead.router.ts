@@ -1,45 +1,60 @@
 // src/routes/lead.routes.ts
 import { Router } from 'express';
 import { authenticate, authorizeRoles } from '../middlewares/auth.middleware';
+import { USER_ROLES } from '../types/index'; // ← Import USER_ROLES
+
+import { createLead ,  getLeads,
+  getLeadById,
+  updateLead,
+  deleteLead,
+  updateLeadStatus,
+  updateLeadType,
+  updateLeadPriority,
+  toggleFavorite,
+  assignLead,
+  scheduleFollowUp,
+  addNote,
+  bulkUpdateStatus,
+  getLeadAnalytics,
+  getConversionFunnel,
+  getOverdueFollowUps,} from '../controller/lead.controller';
 
 const leadRouter = Router();
-const leadController = new LeadController();
 
-// ─── Shorthand bound methods ──────────────────────────────────────────────────
+// ─── Shorthand bound methods (no .bind() needed for standalone functions) ─────
 const ctrl = {
   // CRUD
-  create:          leadController.createLead.bind(leadController),
-  getAll:          leadController.getLeads.bind(leadController),
-  getById:         leadController.getLeadById.bind(leadController),
-  update:          leadController.updateLead.bind(leadController),
-  delete:          leadController.deleteLead.bind(leadController),
+  create:          createLead,
+  getAll:          getLeads,
+  getById:         getLeadById,
+  update:          updateLead,
+  delete:          deleteLead,
 
   // Status / Classification
-  updateStatus:    leadController.updateLeadStatus.bind(leadController),
-  updateType:      leadController.updateLeadType.bind(leadController),
-  updatePriority:  leadController.updateLeadPriority.bind(leadController),
-  toggleFavorite:  leadController.toggleFavorite.bind(leadController),
+  updateStatus:    updateLeadStatus,
+  updateType:      updateLeadType,
+  updatePriority:  updateLeadPriority,
+  toggleFavorite:  toggleFavorite,
 
   // Assignment & Follow-up
-  assign:          leadController.assignLead.bind(leadController),
-  scheduleFollowUp:leadController.scheduleFollowUp.bind(leadController),
+  assign:          assignLead,
+  scheduleFollowUp:scheduleFollowUp,
 
   // Notes & Activities
-  addNote:         leadController.addNote.bind(leadController),
+  addNote:         addNote,
 
   // Bulk
-  bulkUpdateStatus:leadController.bulkUpdateStatus.bind(leadController),
+  bulkUpdateStatus:bulkUpdateStatus,
 
   // Analytics
-  analyticsOverview: leadController.getLeadAnalytics.bind(leadController),
-  analyticsFunnel:   leadController.getConversionFunnel.bind(leadController),
-  analyticsOverdue:  leadController.getOverdueFollowUps.bind(leadController),
+  analyticsOverview: getLeadAnalytics,
+  analyticsFunnel:   getConversionFunnel,
+  analyticsOverdue:  getOverdueFollowUps,
 };
 
 const admin = authorizeRoles([USER_ROLES.ADMIN]);
 
 // ─── Analytics (must be declared BEFORE /:id to avoid route conflicts) ────────
-
 /**
  * @route   GET /api/leads/analytics/overview
  * @desc    Overall lead stats (totals by status, source, priority, etc.)
@@ -62,7 +77,6 @@ leadRouter.get('/analytics/funnel', authenticate, ctrl.analyticsFunnel);
 leadRouter.get('/analytics/overdue', authenticate, ctrl.analyticsOverdue);
 
 // ─── Bulk Operations (also before /:id) ──────────────────────────────────────
-
 /**
  * @route   PATCH /api/leads/bulk/status
  * @desc    Bulk-update status for multiple leads
@@ -72,7 +86,6 @@ leadRouter.get('/analytics/overdue', authenticate, ctrl.analyticsOverdue);
 leadRouter.patch('/bulk/status', authenticate, admin, ctrl.bulkUpdateStatus);
 
 // ─── CRUD ─────────────────────────────────────────────────────────────────────
-
 /**
  * @route   GET /api/leads
  * @desc    List leads (paginated, filterable, text search)
@@ -114,7 +127,6 @@ leadRouter.put('/:id', authenticate, ctrl.update);
 leadRouter.delete('/:id', authenticate, admin, ctrl.delete);
 
 // ─── Status & Classification ─────────────────────────────────────────────────
-
 /**
  * @route   PATCH /api/leads/:id/status
  * @body    { status: LeadStatus }
@@ -144,7 +156,6 @@ leadRouter.patch('/:id/priority', authenticate, ctrl.updatePriority);
 leadRouter.patch('/:id/favorite', authenticate, ctrl.toggleFavorite);
 
 // ─── Assignment & Follow-up ──────────────────────────────────────────────────
-
 /**
  * @route   PATCH /api/leads/:id/assign
  * @body    { assignedTo: string }
@@ -160,7 +171,6 @@ leadRouter.patch('/:id/assign', authenticate, admin, ctrl.assign);
 leadRouter.post('/:id/follow-up', authenticate, ctrl.scheduleFollowUp);
 
 // ─── Notes & Activities ──────────────────────────────────────────────────────
-
 /**
  * @route   POST /api/leads/:id/notes
  * @body    { text: string }

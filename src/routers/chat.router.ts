@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { authenticate, authorizeRoles } from '../middlewares/auth.middleware';
-import { USER_ROLES } from '../controller/lead.controller';
+import { USER_ROLES } from '../types';
 import ChatController from '../controller/chat.controller';
 
 const chatRouter = Router();
