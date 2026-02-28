@@ -4,8 +4,8 @@ import cors from 'cors';
 import morgan from 'morgan';
 import cookieParser from 'cookie-parser';
 import connectDB from './DataBase/database';
-import router from './routers/router';
 import { CustomError } from './middlewares/custom.error';
+import router from './routers/router';
 
 // ─────────────────────────────────────────────────────────────
 // App Initialization

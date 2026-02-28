@@ -2,11 +2,11 @@
 import { Request, Response, NextFunction } from 'express';
 import mongoose, { Types } from 'mongoose';
 
-import { ActivityType, LeadPriority, LeadSource, LeadStatus, LeadType, type ApiResponse } from '../types/index.js';
-import Activity from '../DataBase/Schema/Activity.schema.js';
-import { AppError } from '../middlewares/errorHandler.js';
-import Company from '../DataBase/Schema/company.schema.js';
-import Lead from '../DataBase/Schema/Leads.schema.js';
+import { ActivityType, LeadPriority, LeadSource, LeadStatus, LeadType, type ApiResponse } from '../types/index';
+import Activity from '../DataBase/Schema/Activity.schema';
+import { AppError } from '../middlewares/errorHandler';
+import Company from '../DataBase/Schema/company.schema';
+import Lead from '../DataBase/Schema/Leads.schema';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
