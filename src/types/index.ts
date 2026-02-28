@@ -637,3 +637,43 @@ export const MAX_MESSAGE_LENGTH = 10000;
 export const MAX_NOTE_LENGTH = 2000;
 export const MAX_TAG_LENGTH = 50;
 export const MAX_TAGS_PER_LEAD = 20;
+
+// src/types/index.ts
+
+export type Channel = 'whatsapp' | 'email';
+
+export type WAStatus = 'sending' | 'sent' | 'delivered' | 'seen' | 'replied';
+export type EmailStatus = 'sending' | 'sent' | 'opened' | 'replied';
+export type FollowUpStatus = 'pending' | 'auto_scheduled' | 'sent' | 'done';
+
+export interface IMessageReply {
+  text: string;
+  receivedAt: Date;
+}
+
+export interface PaginationQuery {
+  page?: string;
+  limit?: string;
+}
+
+export interface MessageFilterQuery extends PaginationQuery {
+  channel?: Channel;
+  search?: string;
+  waStatus?: WAStatus;
+  emailStatus?: EmailStatus;
+  followUpStatus?: FollowUpStatus;
+  isBulk?: string;
+  needsFollowUp?: string;
+}
+
+export interface ApiResponse<T = unknown> {
+  success: boolean;
+  data?: T;
+  message?: string;
+  pagination?: {
+    total: number;
+    page: number;
+    limit: number;
+    pages: number;
+  };
+}
