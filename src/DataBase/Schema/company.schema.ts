@@ -2,6 +2,9 @@ import mongoose, { Document, Model, Schema } from 'mongoose';
 
 export const COMPANY_TYPES = [
   'family',
+  'clinic',
+  'hospital',
+  'healthcare',
   'college',
   'university',
   'school',
@@ -55,7 +58,6 @@ const companySchema = new Schema<ICompany, ICompanyModel>(
     contactPhone: {
       type: String,
       required: [true, 'Contact phone is required'],
-      match: [/^\+?[0-9\s\-]{10,16}$/, 'Invalid phone format'],
     },
     industry: { type: String, trim: true },
     website: { type: String, trim: true },

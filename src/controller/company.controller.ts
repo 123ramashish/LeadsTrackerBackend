@@ -80,37 +80,31 @@ export default class CompanyController {
       }
 
       // Create company
-      const [company] = await Company.create(
-        [
-          {
-            name: companyName,
-            type: companyType.toLowerCase(),
-            contactEmail: contactEmail?.toLowerCase(),
-            contactPhone,
-            industry,
-            website,
-            address,
-            isActive: true,
-          },
-        ],
-        { session }
-      );
+      const company = new Company({
+        name: companyName,
+        type: companyType.toLowerCase(),
+        contactEmail: contactEmail?.toLowerCase(),
+        contactPhone,
+        industry,
+        website,
+        address,
+        isActive: true,
+      });
 
-      // Create admin user linked to company
-      const [adminUser] = await User.create(
-        [
-          {
-            name: adminName,
-            email: adminEmail?.toLowerCase(),
-            phone: adminPhone,
-            password,
-            company: company._id,
-            userRole: USER_ROLES.ADMIN,
-            isVerified: true,
-          },
-        ],
-        { session }
-      );
+      await company.save({ session });
+
+      // Create admin user
+      const adminUser = new User({
+        name: adminName,
+        email: adminEmail?.toLowerCase(),
+        phone: adminPhone,
+        password,
+        company: company._id,
+        userRole: USER_ROLES.ADMIN,
+        isVerified: true,
+      });
+
+      await adminUser.save({ session });
 
       await session.commitTransaction();
 
@@ -202,7 +196,7 @@ export default class CompanyController {
   async getCompany(req: AuthRequest, res: Response): Promise<void> {
     try {
       const { id } = req.params as any;
-      const currentUser:any = req.user;
+      const currentUser: any = req.user;
 
       // Non-SuperAdmins can only view their own company
       if (!currentUser.isSuperAdmin && currentUser.companyId !== id) {
@@ -233,7 +227,7 @@ export default class CompanyController {
   async updateCompany(req: AuthRequest, res: Response): Promise<void> {
     try {
       const { id } = req.params as any;
-      const currentUser :any= req.user;
+      const currentUser: any = req.user;
 
       // Non-SuperAdmins can only update their own company
       if (!currentUser.isSuperAdmin && currentUser.companyId !== id) {

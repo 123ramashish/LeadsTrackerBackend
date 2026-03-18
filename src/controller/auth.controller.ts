@@ -259,83 +259,87 @@ const toPublicUser = (user: IUser, companyName?: string | null) => ({
 
 export default class AuthController {
   // ─── LOGIN ────────────────────────────────────────────────────────────────
-  async login(req: Request, res: Response): Promise<void> {
-    try {
-      const { identifier, password, usePhone = false } = req.body as {
-        identifier: string;
-        password: string;
-        usePhone?: boolean;
-      };
+async login(req: Request, res: Response){
+  try {
+    const { identifier, password, usePhone = false } = req.body;
 
-      if (!identifier || !password) {
-        res.status(400).json({ message: 'Identifier and password are required' });
-        return;
-      }
+    if (!identifier || !password) {
+      return res.status(400).json({
+        message: 'Identifier and password are required',
+      });
+    }
 
-      const query = usePhone
-        ? { phone: identifier, isDeleted: false }
-        : { email: identifier.toLowerCase(), isDeleted: false };
+    const query = usePhone
+      ? { phone: identifier, isDeleted: false }
+      : { email: identifier.toLowerCase(), isDeleted: false };
 
-      const user = await User.findOne(query).select('+password');
+    // 🔥 FIXED HERE
+    const user = await User.findOne(query).select('+password');
+console.log("user",user,query)
+    if (!user) {
+      return res.status(401).json({ message: 'Invalid credentials' });
+    }
 
-      // Always return generic error to prevent user enumeration
-      if (!user) {
-        res.status(401).json({ message: 'Invalid credentials' });
-        return;
-      }
+    if (user.isLocked) {
+      return res.status(403).json({
+        message: 'Account locked. Contact your administrator.',
+      });
+    }
 
-      if (user.isLocked) {
-        res.status(403).json({ message: 'Account locked. Contact your administrator.' });
-        return;
-      }
+    const isMatch = await user.comparePassword(password);
 
-      if (!user.isVerified) {
-        res.status(403).json({ message: 'Account not verified. Check your email or contact admin.' });
-        return;
-      }
+    if (!isMatch) {
+      user.loginAttempts += 1;
 
-      const isMatch = await user.comparePassword(password);
-
-      if (!isMatch) {
-        user.loginAttempts += 1;
-        if (user.loginAttempts >= 5) {
-          user.isLocked = true;
-          await user.save();
-          res.status(403).json({ message: 'Account locked after 5 failed attempts. Contact admin.' });
-          return;
-        }
+      if (user.loginAttempts >= 5) {
+        user.isLocked = true;
         await user.save();
-        res.status(401).json({
-          message: 'Invalid credentials',
-          attemptsLeft: 5 - user.loginAttempts,
+
+        return res.status(403).json({
+          message: 'Account locked after 5 failed attempts. Contact admin.',
         });
-        return;
       }
 
-      // Successful login
-      user.loginAttempts = 0;
-      user.lastLogin = new Date();
       await user.save();
 
-      const accessToken = await generateAccessToken(user);
-
-      let companyName: string | null = null;
-      if (user.company) {
-        const company = await Company.findById(user.company).select('name').lean();
-        companyName = company?.name ?? null;
-      }
-
-      res.status(200).json({
-        message: 'Login successful',
-        user: toPublicUser(user, companyName),
-        accessToken,
+      return res.status(401).json({
+        message: 'Invalid credentials',
+        attemptsLeft: 5 - user.loginAttempts,
       });
-    } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : 'Unknown error';
-      console.error('Login error:', error);
-      res.status(500).json({ message: 'Authentication failed', error: msg });
     }
+
+    // ✅ Successful login
+    user.loginAttempts = 0;
+    user.lastLogin = new Date();
+    await user.save();
+
+    const accessToken = await generateAccessToken(user);
+
+    let companyName: string | null = null;
+
+    if (user.company) {
+      const company = await Company.findById(user.company)
+        .select('name')
+        .lean();
+      companyName = company?.name ?? null;
+    }
+
+    return res.status(200).json({
+      message: 'Login successful',
+      user: toPublicUser(user, companyName),
+      accessToken,
+    });
+
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Login error:', error);
+
+    return res.status(500).json({
+      message: 'Authentication failed',
+      error: msg,
+    });
   }
+}
 
   // ─── OTP REQUEST ─────────────────────────────────────────────────────────
   async requestOTP(req: Request, res: Response): Promise<void> {

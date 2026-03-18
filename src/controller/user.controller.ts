@@ -355,7 +355,7 @@ export default class UserController {
   async createUser(req: AuthRequest, res: Response): Promise<void> {
     try {
       const { name, email, phone, password, userRole = USER_ROLES.USER, companyId } = req.body as any
-
+console.log("api call")
       const creator :any= req.user;
 
       if (!name || !phone || !password) {

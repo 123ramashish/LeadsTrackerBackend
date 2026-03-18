@@ -9,8 +9,8 @@ import leadRouter from "./lead.router";
 
 const router = Router();
 
-router.use("/users", userRouter);
 router.use("/companies", companyRouter);
+router.use("/users",(req,res)=>{console.log("APO CALL")}, userRouter);
 router.use("/auth", authRouter);
 router.use("/chat", chatRouter);
 router.use("/leads", leadRouter);
