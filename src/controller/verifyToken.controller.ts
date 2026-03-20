@@ -1,65 +1,96 @@
+// controllers/AuthController.ts
 import { Request, Response } from "express";
-import jwt from "jsonwebtoken";
-import User from "../DataBase/Schema/user.schema";
+import jwt, { TokenExpiredError, JwtPayload } from "jsonwebtoken";
+import User, { IUser } from "../DataBase/Schema/user.schema";
 
-export const verifyToken = async (req: Request, res: Response) => {
+export const verifyToken = async (req: Request, res: Response): Promise<void> => {
   try {
-    const authHeader = req.headers.authorization;
+  
 
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return res.status(401).json({ message: "No token provided" });
-    }
+    const token = await req.body;
+    console.log("tokenjnk",token)
 
-    const token = authHeader.split(" ")[1];
-
-    try {
+     try {
       // ✅ Verify access token
-      const decoded = jwt.verify(token, process.env.JWT_SECRET || "secret") as any;
+      const decoded = jwt.verify(token, process.env.JWT_SECRET!) as JwtPayload & {
+        id: string;
+        role: string;
+        companyId?: string;
+        isSuperAdmin: boolean;
+      };
+console.log("decoded",decoded)
 
-      return res.status(200).json({
-        valid: true,
-        user: { sub: decoded.sub, email: decoded.email, role: decoded.role },
-      });
-    } catch (error: any) {
-      if (error.name === "TokenExpiredError") {
-        // ✅ Decode to get userId
-        const decoded = jwt.decode(token) as any;
-        const userId = decoded?.sub;
-
-        if (!userId) {
-          return res.status(401).json({ message: "Invalid token" });
-        }
-
-        const user:any = await User.findById(userId);
-        if (!user || !user.refreshToken) {
-          return res.status(401).json({ message: "Refresh token not found" });
-        }
-
-        try {
-          // ✅ Verify refresh token
-          jwt.verify(user.refreshToken, process.env.JWT_SECRET || "secret");
-
-          // ✅ Generate new access token
-          const newAccessToken = jwt.sign(
-            { sub: user._id, email: user.email, role: user.userRole },
-            process.env.JWT_SECRET || "secret",
-            { expiresIn: "1h" }
-          );
-
-          // Send new token in response (frontend should replace it in Cookies)
-          return res.status(200).json({
-            valid: true,
-            newAccessToken,
-            user: { sub: user._id, email: user.email, role: user.userRole },
-          });
-        } catch (refreshError) {
-          return res.status(401).json({ message: "Invalid refresh token" });
-        }
+      // Fetch fresh user data (exclude sensitive fields)
+      const user = await User.findById(decoded.id)
+        .select("-password -resetToken -resetTokenExpiry -refreshToken -refreshTokenExpiry")
+        .lean();
+console.log("user",user)
+      if (!user || user.isDeleted) {
+        res.status(401).json({ message: "User not found" });
+        return;
       }
 
-      return res.status(401).json({ message: "Invalid token" });
+      // ✅ Token is valid - return user info
+      res.status(200).json({
+        valid: true,
+        expired: false,
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          phone: user.phone,
+          role: user.userRole,
+          companyId: user.company,
+          isVerified: user.isVerified,
+          lastLogin: user.lastLogin,
+        },
+      });
+      return;
+
+    } catch (error: unknown) {
+      // ✅ Handle expired access token
+      if (error instanceof TokenExpiredError) {
+        const decoded = jwt.decode(token) as JwtPayload & { id?: string };
+        const userId = decoded?.id;
+
+        if (!userId) {
+          res.status(401).json({ valid: false, expired: true, message: "Invalid token payload" });
+          return;
+        }
+
+        // Check if user has a valid refresh token stored
+        const user = await User.findById(userId)
+          .select("+refreshToken +refreshTokenExpiry")
+          .lean();
+
+        if (!user || !user.refreshToken || !user.refreshTokenExpiry || user.refreshTokenExpiry < new Date()) {
+          res.status(401).json({ 
+            valid: false, 
+            expired: true, 
+            message: "No valid refresh token available",
+            requiresLogin: true 
+          });
+          return;
+        }
+
+        // ✅ Token expired BUT refresh token exists - signal frontend to refresh
+        // ⚠️ DO NOT send refresh token in response body (security risk)
+        // Frontend should have it stored securely (httpOnly cookie or secure storage)
+        res.status(200).json({
+          valid: false,
+          expired: true,
+          message: "Access token expired - use refresh token to get new one",
+          // 🔐 Refresh token is NOT included here - see security note below
+        });
+        return;
+      }
+
+      // ✅ Other token errors (invalid signature, malformed, etc.)
+      res.status(401).json({ valid: false, expired: false, message: "Invalid token" });
+      return;
     }
   } catch (err) {
-    return res.status(500).json({ message: "Token verification error" });
+    console.error("[verifyToken] Server error:", err);
+    res.status(500).json({ message: "Token verification failed" });
   }
 };

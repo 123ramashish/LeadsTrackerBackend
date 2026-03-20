@@ -3,12 +3,14 @@
 import { Router } from 'express';
 import AuthController from '../controller/auth.controller';
 import { authenticate } from '../middlewares/auth.middleware';
+import { verifyToken } from '../controller/verifyToken.controller';
 
 const authRouter = Router();
 const authController = new AuthController();
 
 // Public
 authRouter.post('/login', authController.login.bind(authController));
+authRouter.post('/verifytoken', verifyToken);
 authRouter.post('/otp/request', authController.requestOTP.bind(authController));
 authRouter.post('/password/reset', authController.resetPassword.bind(authController));
 

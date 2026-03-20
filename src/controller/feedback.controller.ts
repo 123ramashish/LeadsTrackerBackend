@@ -5,7 +5,7 @@ import User, { USER_ROLES, IUser } from '../DataBase/Schema/user.schema';
 import Company from '../DataBase/Schema/company.schema';
 
 // ─── Helper: Derive sentiment from rating ─────────────────────────────────────
-const deriveSentiment = (rating: number): FEEDBACK_SENTIMENT => {
+const deriveSentiment = (rating: number): any => {
   if (rating >= 4) return FEEDBACK_SENTIMENT.POSITIVE;
   if (rating === 3) return FEEDBACK_SENTIMENT.NEUTRAL;
   return FEEDBACK_SENTIMENT.NEGATIVE;
@@ -22,7 +22,8 @@ const sanitizeSubmitterData = (data: Partial<IFeedback>) => {
 
 export default class FeedbackController {
   // ─── SUBMIT FEEDBACK (Public or Authenticated) ─────────────────────────────
-  async submitFeedback(req: Request, res: Response): Promise<void> {
+  async submitFeedback(req: Request, res: Response) {
+    console.log("api call")
     try {
       const {
         companyId,
@@ -33,10 +34,10 @@ export default class FeedbackController {
         submitterEmail,
         tags,
         inputMode = 'text',
-      } = req.body;
-
+      } =  req.body;
+console.log("api call",req.body)
       // Validation
-      if (!companyId || !mongoose.Types.ObjectId.isValid(companyId)) {
+      if (!companyId || !mongoose.Types.ObjectId.isValid(companyId as string)) {
         res.status(400).json({ message: 'Valid companyId is required' });
         return;
       }
@@ -71,7 +72,7 @@ export default class FeedbackController {
       // Attach authenticated user if present
       const authUser = (req as any).user;
       if (authUser?.id) {
-        feedbackData.user = authUser.id;
+        feedbackData.user = new mongoose.Types.ObjectId(authUser.id) as any;
         // Prefer authenticated user's details if submitter info not provided
         if (!feedbackData.submitterName || !feedbackData.submitterEmail) {
           const user = await User.findById(authUser.id).select('name email phone');
@@ -102,7 +103,7 @@ export default class FeedbackController {
   async getCompanyFeedback(req: Request, res: Response): Promise<void> {
     try {
       const authUser = (req as any).user as { id: string; role: string; companyId?: string };
-      const { page = 1, limit = 20, sentiment, status, rating, search } = req.query;
+      const { page = '1', limit = '20', sentiment, status, rating, search } = req.query as any;
 
       // Build filter
       const filter: mongoose.FilterQuery<IFeedback> = { isDeleted: false };
@@ -120,11 +121,11 @@ export default class FeedbackController {
       }
 
       // Optional filters
-      if (sentiment && Object.values(FEEDBACK_SENTIMENT).includes(sentiment as FEEDBACK_SENTIMENT)) {
-        filter.sentiment = sentiment as FEEDBACK_SENTIMENT;
+      if (sentiment && (Object.values(FEEDBACK_SENTIMENT) as string[]).includes(sentiment as string)) {
+        filter.sentiment = sentiment as any;
       }
-      if (status && Object.values(FEEDBACK_STATUS).includes(status as FEEDBACK_STATUS)) {
-        filter.status = status as FEEDBACK_STATUS;
+      if (status && (Object.values(FEEDBACK_STATUS) as string[]).includes(status as string)) {
+        filter.status = status as any;
       }
       if (rating) {
         const r = Number(rating);
@@ -138,8 +139,8 @@ export default class FeedbackController {
         ];
       }
 
-      const pageNum = Math.max(1, Number(page));
-      const limitNum = Math.min(100, Math.max(1, Number(limit)));
+      const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+      const limitNum = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 20));
       const skip = (pageNum - 1) * limitNum;
 
       const [data, total] = await Promise.all([
@@ -267,7 +268,7 @@ export default class FeedbackController {
       const authUser = (req as any).user as { id: string; role: string; companyId?: string };
       const { id } = req.params;
 
-      if (!mongoose.Types.ObjectId.isValid(id)) {
+      if (!mongoose.Types.ObjectId.isValid(id as string)) {
         res.status(400).json({ message: 'Invalid feedback ID' });
         return;
       }
@@ -308,20 +309,20 @@ export default class FeedbackController {
       const { status, adminNotes } = req.body;
       const authUser = (req as any).user as { id: string; role: string };
 
-      if (!mongoose.Types.ObjectId.isValid(id)) {
+      if (!mongoose.Types.ObjectId.isValid(id as string)) {
         res.status(400).json({ message: 'Invalid feedback ID' });
         return;
       }
 
       const update: Partial<IFeedback> = {};
-      if (status && Object.values(FEEDBACK_STATUS).includes(status as FEEDBACK_STATUS)) {
-        update.status = status as FEEDBACK_STATUS;
+      if (status && (Object.values(FEEDBACK_STATUS) as string[]).includes(status as string)) {
+        update.status = status as any;
       }
       if (adminNotes !== undefined) {
         update.adminNotes = adminNotes?.trim().slice(0, 500);
       }
       if (status) {
-        update.reviewedBy = authUser.id;
+        update.reviewedBy = new mongoose.Types.ObjectId(authUser.id) as any;
         update.reviewedAt = new Date();
       }
 
@@ -354,7 +355,7 @@ export default class FeedbackController {
     try {
       const { id } = req.params;
 
-      if (!mongoose.Types.ObjectId.isValid(id)) {
+      if (!mongoose.Types.ObjectId.isValid(id as string)) {
         res.status(400).json({ message: 'Invalid feedback ID' });
         return;
       }

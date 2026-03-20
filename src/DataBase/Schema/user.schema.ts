@@ -1,5 +1,6 @@
 import mongoose, { Document, Model, Schema } from 'mongoose';
 import bcrypt from 'bcrypt';
+import crypto from 'crypto';
 
 // ─── Role Constants ───────────────────────────────────────────────────────────
 export const USER_ROLES = {
@@ -30,9 +31,13 @@ export interface IUser extends Document {
   deletedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
-
+ refreshToken?: string;        // Hashed refresh token
+  refreshTokenExpiry?: Date;    // Expiry timestamp
   // Instance methods
   comparePassword(candidate: string): Promise<boolean>;
+  compareRefreshToken(candidate: string): Promise<boolean>;
+  generateRefreshToken(): Promise<{ token: string; expiry: Date }>;
+  invalidateRefreshToken(): Promise<void>;
 }
 
 // ─── Model Interface (static methods) ─────────────────────────────────────────
@@ -86,6 +91,8 @@ const userSchema = new Schema<IUser, IUserModel>(
     resetTokenExpiry: { type: Date, select: false },
     isDeleted: { type: Boolean, default: false },
     deletedAt: Date,
+     refreshToken: { type: String, select: false },
+    refreshTokenExpiry: { type: Date, select: false },
   },
   { timestamps: true }
 );
@@ -104,7 +111,38 @@ userSchema.methods.comparePassword = async function (
     return false;
   }
 };
+// ─── Instance Method: Compare refresh token ───────────────────────────────────
+userSchema.methods.compareRefreshToken = async function (
+  candidate: string
+): Promise<boolean> {
+  try {
+    return await bcrypt.compare(candidate, this.refreshToken);
+  } catch {
+    return false;
+  }
+};
 
+// ─── Instance Method: Generate and hash refresh token ─────────────────────────
+userSchema.methods.generateRefreshToken = async function (): Promise<{
+  token: string;
+  expiry: Date;
+}> {
+  const token = crypto.randomBytes(40).toString('hex'); // 256-bit secure token
+  const hashedToken = await bcrypt.hash(token, 12);
+  const expiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+
+  this.refreshToken = hashedToken;
+  this.refreshTokenExpiry = expiry;
+  
+  return { token, expiry };
+};
+
+// ─── Instance Method: Invalidate refresh token ────────────────────────────────
+userSchema.methods.invalidateRefreshToken = async function (): Promise<void> {
+  this.refreshToken = undefined;
+  this.refreshTokenExpiry = undefined;
+  await this.save();
+};
 // ─── Static Methods ───────────────────────────────────────────────────────────
 userSchema.statics.findActive = function (
   filter: mongoose.FilterQuery<IUser> = {}
