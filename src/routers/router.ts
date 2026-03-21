@@ -7,6 +7,8 @@ import { companyRouter } from "./company.router";
 import chatRouter from "./chat.router";
 import leadRouter from "./lead.router";
 import { feedbackRouter } from "./feedback.router";
+import whatsappTemplateRouter from "./whatsappTemplate.router";
+import scrapperrouter from "./scraper.routes";
 
 const router = Router();
 
@@ -15,6 +17,8 @@ router.use("/users", userRouter);
 router.use("/auth", authRouter);
 router.use("/chat", chatRouter);
 router.use("/leads", leadRouter);
+router.use("/scrapper", scrapperrouter);
+router.use("/whatsapp-templates", whatsappTemplateRouter);
 router.use("/feedback", feedbackRouter);
 router.use("/notifications", notificationRouter);
 

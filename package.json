@@ -6,8 +6,8 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
-"dev": "nodemon --exec ts-node src/index.ts"
-},
+    "dev": "nodemon --exec ts-node src/index.ts"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",
@@ -41,9 +41,9 @@
     "bcrypt": "^6.0.0",
     "body-parser": "^2.2.0",
     "cookie-parser": "^1.4.7",
-    "cors": "^2.8.5",
-    "dotenv": "^17.2.1",
-    "express": "^5.1.0",
+    "cors": "^2.8.6",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
     "imagekit": "^6.0.0",
     "js-cookie": "^3.0.5",
     "jsonwebtoken": "^9.0.2",
@@ -56,6 +56,10 @@
     "node-cron": "^4.2.1",
     "nodemailer": "^7.0.9",
     "password-hash": "^1.2.2",
+    "puppeteer": "^24.40.0",
+    "puppeteer-core": "^24.40.0",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
     "react-redux": "^9.2.0",
     "redux-persist": "^6.0.0",
     "web-push": "^3.6.7"

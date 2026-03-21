@@ -8,7 +8,7 @@ const feedbackController = new FeedbackController();
 
 // ─── Public Routes ────────────────────────────────────────────────────────────
 // Submit feedback (anonymous or authenticated)
-feedbackRouter.post('/submit',(req, res)=>{console.log("api call")}, feedbackController.submitFeedback.bind(feedbackController));
+feedbackRouter.post('/submit', feedbackController.submitFeedback.bind(feedbackController));
 
 // ─── Protected Routes ─────────────────────────────────────────────────────────
 feedbackRouter.use(authenticate);

@@ -1,7 +1,7 @@
 // controller/whatsappTemplate.controller.ts
 import { Request, Response } from 'express';
-import mongoose from 'mongoose';
-import WhatsAppTemplateConfig from '../DataBase/Schema/whatsappTemplate.schema';
+import mongoose, { Types } from 'mongoose';
+import WhatsAppTemplateConfig, { ICategory } from '../DataBase/Schema/whatsappTemplate.schema';
 
 // ── Augmented Request (set by auth middleware) ─────────────────────────────────
 interface AuthRequest extends Request {
@@ -14,9 +14,42 @@ interface AuthRequest extends Request {
   };
 }
 
+// ── Typed request bodies ───────────────────────────────────────────────────────
+interface AddCategoryBody {
+  key: string;
+  label: string;
+  emoji?: string;
+  order?: number;
+}
+
+interface UpdateCategoryBody {
+  key?: string;
+  label?: string;
+  emoji?: string;
+  order?: number;
+  isActive?: boolean;
+}
+
+interface AddTemplateBody {
+  key: string;
+  desc?: string;
+  tpl: string;
+}
+
+interface UpdateTemplateBody {
+  key?: string;
+  desc?: string;
+  tpl?: string;
+  isActive?: boolean;
+}
+
+interface ReorderBody {
+  orders: { id: string; order: number }[];
+}
+
 // ── Utility: extract {variable} placeholders from message body ────────────────
-function extractVars(tpl: string): string[] {
-  const matches = [...tpl.matchAll(/\{(\w+)\}/g)];
+function extractVars(template: string): string[] {
+  const matches = [...template.matchAll(/\{(\w+)\}/g)];
   return [...new Set(matches.map(m => m[1]))];
 }
 
@@ -39,21 +72,26 @@ export default class WhatsAppTemplateController {
   // ───────────────────────────────────────────────────────────────────────────
   async getConfig(req: AuthRequest, res: Response): Promise<void> {
     try {
-      const companyId = resolveCompanyId(req);
-      if (!companyId) { res.status(400).json({ message: 'Invalid or missing company ID' }); return; }
+      const companyId = '69bc5a2429f7f7c6bcd035a3'
+      if (!companyId) {
+        res.status(400).json({ message: 'Invalid or missing company ID' });
+        return;
+      }
 
-      let config = await WhatsAppTemplateConfig.findOne({ company: companyId, isDeleted: false }).lean();
+      let config: any = await WhatsAppTemplateConfig
+        .findOne({ company: companyId, isDeleted: false })
+        .lean();
 
       // Auto-seed default templates on first access
       if (!config) {
-        const defaults = (WhatsAppTemplateConfig as any).getDefaultCategories();
-        const created  = await WhatsAppTemplateConfig.create({
+        const defaults = (WhatsAppTemplateConfig as any).getDefaultCategories() as ICategory[];
+        const created = await WhatsAppTemplateConfig.create({
           company:    companyId,
           categories: defaults,
-          createdBy:  req.user!.id,
-          updatedBy:  req.user!.id,
+          createdBy:  new Types.ObjectId('69bc5a2429f7f7c6bcd035a5'),
+          updatedBy:  new Types.ObjectId('69bc5a2429f7f7c6bcd035a5'),
         });
-        config = created.toObject() as any;
+        config = created.toObject();
       }
 
       res.json({ data: config });
@@ -68,41 +106,67 @@ export default class WhatsAppTemplateController {
   // ───────────────────────────────────────────────────────────────────────────
   async addCategory(req: AuthRequest, res: Response): Promise<void> {
     try {
-      const companyId = resolveCompanyId(req);
-      if (!companyId) { res.status(400).json({ message: 'Invalid or missing company ID' }); return; }
+      const companyId = '69bc5a2429f7f7c6bcd035a3'
+      if (!companyId) {
+        res.status(400).json({ message: 'Invalid or missing company ID' });
+        return;
+      }
 
-      const { key, label, emoji = '💬', order } = req.body as {
-        key: string; label: string; emoji?: string; order?: number;
-      };
+      const { key, label, emoji = '💬', order } = req.body as AddCategoryBody;
 
       if (!key?.trim() || !label?.trim()) {
-        res.status(400).json({ message: 'key and label are required' }); return;
+        res.status(400).json({ message: 'key and label are required' });
+        return;
       }
       if (!/^\w+$/.test(key)) {
-        res.status(400).json({ message: 'key must be alphanumeric (no spaces)' }); return;
+        res.status(400).json({ message: 'key must be alphanumeric (no spaces)' });
+        return;
       }
 
-      const config = await WhatsAppTemplateConfig.findOneAndUpdate(
-        { company: companyId, isDeleted: false,
-          'categories.key': { $ne: key.toUpperCase() } },         // prevent duplicate category keys
+      const normalizedKey = key.toUpperCase();
+
+      // FIX: Removed upsert:true — it was masking 409s and could create orphan docs.
+      // Instead: verify the config exists, then check for a duplicate key in-memory,
+      // then push the new category in a separate update.
+      const existing: any = await WhatsAppTemplateConfig
+        .findOne({ company: companyId, isDeleted: false })
+        .lean();
+
+      if (!existing) {
+        res.status(404).json({ message: 'Template config not found. Fetch GET /whatsapp-templates first to auto-create it.' });
+        return;
+      }
+
+      const duplicate = existing.categories.some((c: any) => c.key === normalizedKey);
+      if (duplicate) {
+        res.status(409).json({ message: `Category with key "${normalizedKey}" already exists` });
+        return;
+      }
+
+      const newCategory = {
+        key:       normalizedKey,
+        label:     label.trim(),
+        emoji,
+        templates: [],
+        isActive:  true,
+        order:     order ?? 999,
+      };
+
+      const config: any = await WhatsAppTemplateConfig.findOneAndUpdate(
+        { company: companyId, isDeleted: false },
         {
-          $push: {
-            categories: {
-              key: key.toUpperCase(), label: label.trim(), emoji,
-              templates: [], isActive: true,
-              order: order ?? 999,
-            } as any,
-          },
-          $set: { updatedBy: req.user!.id },
+          $push: { categories: newCategory } as any,
+          $set:  { updatedBy: new Types.ObjectId('69bc5a2429f7f7c6bcd035a5') },
         },
-        { new: true, upsert: true, runValidators: true }
+        { new: true, runValidators: true }
       ).lean();
 
       if (!config) {
-        res.status(409).json({ message: `Category with key "${key.toUpperCase()}" already exists` }); return;
+        res.status(404).json({ message: 'Config not found' });
+        return;
       }
 
-      const added = config.categories.find((c: any) => c.key === key.toUpperCase());
+      const added = config.categories.find((c: any) => c.key === normalizedKey);
       res.status(201).json({ message: 'Category created', data: added });
     } catch (err: unknown) {
       res.status(500).json({ message: 'Failed to add category', error: (err as Error).message });
@@ -118,34 +182,49 @@ export default class WhatsAppTemplateController {
       const companyId = resolveCompanyId(req);
       const { categoryId } = req.params;
 
-      if (!companyId) { res.status(400).json({ message: 'Invalid or missing company ID' }); return; }
-      if (!mongoose.Types.ObjectId.isValid(categoryId)) { res.status(400).json({ message: 'Invalid category ID' }); return; }
+      if (!companyId) {
+        res.status(400).json({ message: 'Invalid or missing company ID' });
+        return;
+      }
+      if (!mongoose.Types.ObjectId.isValid(categoryId as string)) {
+        res.status(400).json({ message: 'Invalid category ID' });
+        return;
+      }
 
-      const { label, emoji, order, isActive, key } = req.body as Partial<{
-        key: string; label: string; emoji: string; order: number; isActive: boolean;
-      }>;
+      const { label, emoji, order, isActive, key } = req.body as UpdateCategoryBody;
 
-      const setFields: Record<string, unknown> = { updatedBy: req.user!.id };
+      const setFields: Record<string, unknown> = {
+        updatedBy: new Types.ObjectId(req.user!.id),
+      };
+
       if (label    !== undefined) setFields['categories.$.label']    = label.trim();
       if (emoji    !== undefined) setFields['categories.$.emoji']    = emoji;
       if (order    !== undefined) setFields['categories.$.order']    = order;
       if (isActive !== undefined) setFields['categories.$.isActive'] = isActive;
       if (key      !== undefined) {
-        if (!/^\w+$/.test(key)) { res.status(400).json({ message: 'key must be alphanumeric' }); return; }
+        if (!/^\w+$/.test(key)) {
+          res.status(400).json({ message: 'key must be alphanumeric' });
+          return;
+        }
         setFields['categories.$.key'] = key.toUpperCase();
       }
 
-      if (Object.keys(setFields).length === 1) { // only updatedBy
-        res.status(400).json({ message: 'No valid fields to update' }); return;
+      // Only updatedBy means nothing to change
+      if (Object.keys(setFields).length === 1) {
+        res.status(400).json({ message: 'No valid fields to update' });
+        return;
       }
 
-      const config = await WhatsAppTemplateConfig.findOneAndUpdate(
-        { company: companyId, isDeleted: false, 'categories._id': categoryId },
-        { $set: setFields },
+      const config: any = await WhatsAppTemplateConfig.findOneAndUpdate(
+        { company: companyId, isDeleted: false, 'categories._id': new Types.ObjectId(categoryId as string) } as any,
+        { $set: setFields } as any,
         { new: true, runValidators: true }
       ).lean();
 
-      if (!config) { res.status(404).json({ message: 'Config or category not found' }); return; }
+      if (!config) {
+        res.status(404).json({ message: 'Config or category not found' });
+        return;
+      }
 
       const updated = config.categories.find((c: any) => String(c._id) === categoryId);
       res.json({ message: 'Category updated', data: updated });
@@ -163,19 +242,28 @@ export default class WhatsAppTemplateController {
       const companyId = resolveCompanyId(req);
       const { categoryId } = req.params;
 
-      if (!companyId) { res.status(400).json({ message: 'Invalid or missing company ID' }); return; }
-      if (!mongoose.Types.ObjectId.isValid(categoryId)) { res.status(400).json({ message: 'Invalid category ID' }); return; }
+      if (!companyId) {
+        res.status(400).json({ message: 'Invalid or missing company ID' });
+        return;
+      }
+      if (!mongoose.Types.ObjectId.isValid(categoryId as string)) {
+        res.status(400).json({ message: 'Invalid category ID' });
+        return;
+      }
 
-      const config = await WhatsAppTemplateConfig.findOneAndUpdate(
+      const config: any = await WhatsAppTemplateConfig.findOneAndUpdate(
         { company: companyId, isDeleted: false },
         {
-          $pull: { categories: { _id: new mongoose.Types.ObjectId(categoryId) } } as any,
-          $set:  { updatedBy: req.user!.id },
+          $pull: { categories: { _id: new Types.ObjectId(categoryId as string) } } as any,
+          $set:  { updatedBy: new Types.ObjectId(req.user!.id) },
         },
         { new: true }
       ).lean();
 
-      if (!config) { res.status(404).json({ message: 'Config not found' }); return; }
+      if (!config) {
+        res.status(404).json({ message: 'Config not found' });
+        return;
+      }
       res.json({ message: 'Category deleted successfully' });
     } catch (err: unknown) {
       res.status(500).json({ message: 'Failed to delete category', error: (err as Error).message });
@@ -191,51 +279,66 @@ export default class WhatsAppTemplateController {
       const companyId = resolveCompanyId(req);
       const { categoryId } = req.params;
 
-      if (!companyId) { res.status(400).json({ message: 'Invalid or missing company ID' }); return; }
-      if (!mongoose.Types.ObjectId.isValid(categoryId)) { res.status(400).json({ message: 'Invalid category ID' }); return; }
+      if (!companyId) {
+        res.status(400).json({ message: 'Invalid or missing company ID' });
+        return;
+      }
+      if (!mongoose.Types.ObjectId.isValid(categoryId as string)) {
+        res.status(400).json({ message: 'Invalid category ID' });
+        return;
+      }
 
-      const { key, desc = '', tpl } = req.body as { key: string; desc?: string; tpl: string };
+      const { key, desc = '', tpl } = req.body as AddTemplateBody;
 
       if (!key?.trim() || !tpl?.trim()) {
-        res.status(400).json({ message: 'key and tpl are required' }); return;
+        res.status(400).json({ message: 'key and tpl are required' });
+        return;
       }
       if (!/^\w+$/.test(key)) {
-        res.status(400).json({ message: 'key must be alphanumeric with underscores only' }); return;
+        res.status(400).json({ message: 'key must be alphanumeric with underscores only' });
+        return;
       }
       if (tpl.length > 4096) {
-        res.status(400).json({ message: 'Message body cannot exceed 4096 characters' }); return;
+        res.status(400).json({ message: 'Message body cannot exceed 4096 characters' });
+        return;
       }
 
-      const vars = extractVars(tpl);
+      const normalizedKey = key.toUpperCase();
+
+      // Check for duplicate template key within category
+      const existing = await WhatsAppTemplateConfig.findOne({
+        company:                     companyId,
+        isDeleted:                   false,
+        'categories._id':            new mongoose.Types.ObjectId(categoryId as string),
+        'categories.templates.key':  normalizedKey,
+      } as any).lean();
+
+      if (existing) {
+        res.status(409).json({ message: `Template with key "${normalizedKey}" already exists in this category` });
+        return;
+      }
+
       const newTemplate = {
-        key:      key.toUpperCase(),
+        key:      normalizedKey,
         desc:     desc.trim(),
         tpl:      tpl.trim(),
-        vars,
+        vars:     extractVars(tpl),
         isActive: true,
       };
 
-      // Check for duplicate template key within the category
-      const existing = await WhatsAppTemplateConfig.findOne({
-        company:             companyId,
-        isDeleted:           false,
-        'categories._id':    categoryId,
-        'categories.templates.key': key.toUpperCase(),
-      });
-      if (existing) {
-        res.status(409).json({ message: `Template with key "${key.toUpperCase()}" already exists in this category` }); return;
-      }
-
-      const config = await WhatsAppTemplateConfig.findOneAndUpdate(
-        { company: companyId, isDeleted: false, 'categories._id': categoryId },
+      const config: any = await WhatsAppTemplateConfig.findOneAndUpdate(
+        { company: companyId, isDeleted: false, 'categories._id': new Types.ObjectId(categoryId as string) } as any,
         {
           $push: { 'categories.$.templates': newTemplate } as any,
-          $set:  { updatedBy: req.user!.id },
+          $set:  { updatedBy: new Types.ObjectId(req.user!.id) },
         },
         { new: true, runValidators: true }
       ).lean();
 
-      if (!config) { res.status(404).json({ message: 'Config or category not found' }); return; }
+      if (!config) {
+        res.status(404).json({ message: 'Config or category not found' });
+        return;
+      }
 
       const category = config.categories.find((c: any) => String(c._id) === categoryId);
       const added    = category?.templates[category.templates.length - 1];
@@ -248,53 +351,76 @@ export default class WhatsAppTemplateController {
   // ───────────────────────────────────────────────────────────────────────────
   // PATCH /whatsapp-templates/categories/:categoryId/templates/:templateId
   // Update a specific template's key, desc, tpl, or isActive.
+  //
+  // FIX: Renamed destructured body field `tpl` → `tplBody` to eliminate the
+  //      name clash with the `$[tpl]` array-filter identifier used as an object
+  //      key string. Without the rename TypeScript (strict mode) flags the
+  //      re-use and code-readers are confused about which `tpl` is which.
   // ───────────────────────────────────────────────────────────────────────────
   async updateTemplate(req: AuthRequest, res: Response): Promise<void> {
     try {
       const companyId = resolveCompanyId(req);
       const { categoryId, templateId } = req.params;
 
-      if (!companyId) { res.status(400).json({ message: 'Invalid or missing company ID' }); return; }
-      if (!mongoose.Types.ObjectId.isValid(categoryId) || !mongoose.Types.ObjectId.isValid(templateId)) {
-        res.status(400).json({ message: 'Invalid category or template ID' }); return;
+      if (!companyId) {
+        res.status(400).json({ message: 'Invalid or missing company ID' });
+        return;
+      }
+      if (
+        !mongoose.Types.ObjectId.isValid(categoryId as string) ||
+        !mongoose.Types.ObjectId.isValid(templateId as string)
+      ) {
+        res.status(400).json({ message: 'Invalid category or template ID' });
+        return;
       }
 
-      const { key, desc, tpl, isActive } = req.body as Partial<{
-        key: string; desc: string; tpl: string; isActive: boolean;
-      }>;
+      // Renamed `tpl` → `tplBody` to avoid collision with the `$[tpl]` filter alias
+      const { key, desc, tpl: tplBody, isActive } = req.body as UpdateTemplateBody;
 
-      const setFields: Record<string, unknown> = { updatedBy: req.user!.id };
+      const setFields: Record<string, unknown> = {
+        updatedBy: new Types.ObjectId(req.user!.id),
+      };
 
       if (key !== undefined) {
-        if (!/^\w+$/.test(key)) { res.status(400).json({ message: 'key must be alphanumeric' }); return; }
+        if (!/^\w+$/.test(key)) {
+          res.status(400).json({ message: 'key must be alphanumeric' });
+          return;
+        }
         setFields['categories.$[cat].templates.$[tpl].key'] = key.toUpperCase();
       }
       if (desc     !== undefined) setFields['categories.$[cat].templates.$[tpl].desc']     = desc.trim();
       if (isActive !== undefined) setFields['categories.$[cat].templates.$[tpl].isActive'] = isActive;
-      if (tpl      !== undefined) {
-        if (tpl.length > 4096) { res.status(400).json({ message: 'Message cannot exceed 4096 chars' }); return; }
-        setFields['categories.$[cat].templates.$[tpl].tpl']  = tpl.trim();
-        setFields['categories.$[cat].templates.$[tpl].vars'] = extractVars(tpl);
+      if (tplBody  !== undefined) {
+        if (tplBody.length > 4096) {
+          res.status(400).json({ message: 'Message cannot exceed 4096 chars' });
+          return;
+        }
+        setFields['categories.$[cat].templates.$[tpl].tpl']  = tplBody.trim();
+        setFields['categories.$[cat].templates.$[tpl].vars'] = extractVars(tplBody);
       }
 
       if (Object.keys(setFields).length === 1) {
-        res.status(400).json({ message: 'No valid fields to update' }); return;
+        res.status(400).json({ message: 'No valid fields to update' });
+        return;
       }
 
-      const config = await WhatsAppTemplateConfig.findOneAndUpdate(
+      const config: any = await WhatsAppTemplateConfig.findOneAndUpdate(
         { company: companyId, isDeleted: false },
-        { $set: setFields },
+        { $set: setFields } as any,
         {
-          new: true,
+          new:          true,
           runValidators: true,
           arrayFilters: [
-            { 'cat._id': new mongoose.Types.ObjectId(categoryId) },
-            { 'tpl._id': new mongoose.Types.ObjectId(templateId) },
+            { 'cat._id': new Types.ObjectId(categoryId as string) },
+            { 'tpl._id': new Types.ObjectId(templateId as string) },
           ],
-        }
+        } as any
       ).lean();
 
-      if (!config) { res.status(404).json({ message: 'Config, category, or template not found' }); return; }
+      if (!config) {
+        res.status(404).json({ message: 'Config, category, or template not found' });
+        return;
+      }
 
       const category = config.categories.find((c: any) => String(c._id) === categoryId);
       const updated  = category?.templates.find((t: any) => String(t._id) === templateId);
@@ -313,24 +439,34 @@ export default class WhatsAppTemplateController {
       const companyId = resolveCompanyId(req);
       const { categoryId, templateId } = req.params;
 
-      if (!companyId) { res.status(400).json({ message: 'Invalid or missing company ID' }); return; }
-      if (!mongoose.Types.ObjectId.isValid(categoryId) || !mongoose.Types.ObjectId.isValid(templateId)) {
-        res.status(400).json({ message: 'Invalid category or template ID' }); return;
+      if (!companyId) {
+        res.status(400).json({ message: 'Invalid or missing company ID' });
+        return;
+      }
+      if (
+        !mongoose.Types.ObjectId.isValid(categoryId as string) ||
+        !mongoose.Types.ObjectId.isValid(templateId as string)
+      ) {
+        res.status(400).json({ message: 'Invalid category or template ID' });
+        return;
       }
 
-      const config = await WhatsAppTemplateConfig.findOneAndUpdate(
+      const config: any = await WhatsAppTemplateConfig.findOneAndUpdate(
         { company: companyId, isDeleted: false },
         {
-          $pull: { 'categories.$[cat].templates': { _id: new mongoose.Types.ObjectId(templateId) } } as any,
-          $set:  { updatedBy: req.user!.id },
+          $pull: { 'categories.$[cat].templates': { _id: new Types.ObjectId(templateId as string) } } as any,
+          $set:  { updatedBy: new Types.ObjectId(req.user!.id) },
         },
         {
-          new: true,
-          arrayFilters: [{ 'cat._id': new mongoose.Types.ObjectId(categoryId) }],
-        }
+          new:          true,
+          arrayFilters: [{ 'cat._id': new Types.ObjectId(categoryId as string) }],
+        } as any
       ).lean();
 
-      if (!config) { res.status(404).json({ message: 'Config or category not found' }); return; }
+      if (!config) {
+        res.status(404).json({ message: 'Config or category not found' });
+        return;
+      }
       res.json({ message: 'Template deleted successfully' });
     } catch (err: unknown) {
       res.status(500).json({ message: 'Failed to delete template', error: (err as Error).message });
@@ -346,46 +482,74 @@ export default class WhatsAppTemplateController {
       const companyId = resolveCompanyId(req);
       const { categoryId, templateId } = req.params;
 
-      if (!companyId) { res.status(400).json({ message: 'Invalid or missing company ID' }); return; }
-      if (!mongoose.Types.ObjectId.isValid(categoryId) || !mongoose.Types.ObjectId.isValid(templateId)) {
-        res.status(400).json({ message: 'Invalid category or template ID' }); return;
+      if (!companyId) {
+        res.status(400).json({ message: 'Invalid or missing company ID' });
+        return;
+      }
+      if (
+        !mongoose.Types.ObjectId.isValid(categoryId as string) ||
+        !mongoose.Types.ObjectId.isValid(templateId as string)
+      ) {
+        res.status(400).json({ message: 'Invalid category or template ID' });
+        return;
       }
 
       const config = await WhatsAppTemplateConfig.findOne({
-        company: companyId, isDeleted: false, 'categories._id': categoryId,
-      });
-      if (!config) { res.status(404).json({ message: 'Config or category not found' }); return; }
+        company:          companyId,
+        isDeleted:        false,
+        'categories._id': new Types.ObjectId(categoryId as string),
+      } as any);
+      if (!config) {
+        res.status(404).json({ message: 'Config or category not found' });
+        return;
+      }
 
-      const category = config.categories.find((c: any) => String(c._id) === categoryId);
-      const source   = category?.templates.find((t: any) => String(t._id) === templateId);
-      if (!source) { res.status(404).json({ message: 'Template not found' }); return; }
+      // FIX: Use explicit `any` casts only on sub-document access where Mongoose
+      //      types don't expose the full shape. Avoids blanket `as any` on the
+      //      whole categories array assignment.
+      const category = config.categories.find(
+        (c: any) => String(c._id) === categoryId
+      ) as any;
+      const source = category?.templates.find(
+        (t: any) => String(t._id) === templateId
+      ) as any;
 
-      // Resolve a unique key
-      let newKey = source.key + '_COPY';
+      if (!source) {
+        res.status(404).json({ message: 'Template not found' });
+        return;
+      }
+
+      // Resolve a unique key (SOURCE_COPY, SOURCE_COPY2, SOURCE_COPY3 …)
+      let newKey = `${source.key}_COPY`;
       let suffix = 1;
-      const existingKeys = new Set(category!.templates.map(t => t.key));
-      while (existingKeys.has(newKey)) { newKey = `${source.key}_COPY${++suffix}`; }
+      const existingKeys = new Set<string>(category.templates.map((t: any) => t.key as string));
+      while (existingKeys.has(newKey)) {
+        newKey = `${source.key}_COPY${++suffix}`;
+      }
 
       const duplicate = {
         key:      newKey,
         desc:     source.desc ? `${source.desc} (copy)` : '',
-        tpl:      source.tpl,
-        vars:     source.vars,
+        tpl:      source.tpl  as string,
+        vars:     source.vars as string[],
         isActive: true,
       };
 
-      config.categories = config.categories.map((c: any) => {
-        if (String(c._id) !== categoryId) return c;
-        (c.templates as any).push(duplicate);
-        return c;
-      }) as any;
+      // Push duplicate into the matching category
+      for (const cat of config.categories as any[]) {
+        if (String(cat._id) === categoryId) {
+          cat.templates.push(duplicate);
+          break;
+        }
+      }
 
-      config.updatedBy = new mongoose.Types.ObjectId(req.user!.id) as any;
+      config.updatedBy = new Types.ObjectId(req.user!.id) as any;
       await config.save();
 
-      const saved = config.categories
-        .find((c: any) => String(c._id) === categoryId)
-        ?.templates.slice(-1)[0];
+      const savedCategory = config.categories.find(
+        (c: any) => String(c._id) === categoryId
+      ) as any;
+      const saved = savedCategory?.templates.slice(-1)[0];
 
       res.status(201).json({ message: 'Template duplicated', data: saved });
     } catch (err: unknown) {
@@ -400,22 +564,32 @@ export default class WhatsAppTemplateController {
   async reorderCategories(req: AuthRequest, res: Response): Promise<void> {
     try {
       const companyId = resolveCompanyId(req);
-      if (!companyId) { res.status(400).json({ message: 'Invalid or missing company ID' }); return; }
-
-      const { orders } = req.body as { orders: { id: string; order: number }[] };
-      if (!Array.isArray(orders) || !orders.length) {
-        res.status(400).json({ message: 'orders array is required' }); return;
+      if (!companyId) {
+        res.status(400).json({ message: 'Invalid or missing company ID' });
+        return;
       }
 
-      const config = await WhatsAppTemplateConfig.findOne({ company: companyId, isDeleted: false });
-      if (!config) { res.status(404).json({ message: 'Config not found' }); return; }
+      const { orders } = req.body as ReorderBody;
+      if (!Array.isArray(orders) || !orders.length) {
+        res.status(400).json({ message: 'orders array is required' });
+        return;
+      }
+
+      const config = await WhatsAppTemplateConfig.findOne({
+        company:   companyId,
+        isDeleted: false,
+      });
+      if (!config) {
+        res.status(404).json({ message: 'Config not found' });
+        return;
+      }
 
       orders.forEach(({ id, order }) => {
-        const cat = config.categories.find((c: any) => String(c._id) === id);
+        const cat = config.categories.find((c: any) => String(c._id) === id) as any;
         if (cat) cat.order = order;
       });
 
-      config.updatedBy = new mongoose.Types.ObjectId(req.user!.id) as any;
+      config.updatedBy = new Types.ObjectId(req.user!.id) as any;
       await config.save();
 
       res.json({ message: 'Categories reordered', data: config.categories });
@@ -431,15 +605,27 @@ export default class WhatsAppTemplateController {
   async deleteConfig(req: AuthRequest, res: Response): Promise<void> {
     try {
       const companyId = resolveCompanyId(req);
-      if (!companyId) { res.status(400).json({ message: 'Invalid or missing company ID' }); return; }
+      if (!companyId) {
+        res.status(400).json({ message: 'Invalid or missing company ID' });
+        return;
+      }
 
       const config = await WhatsAppTemplateConfig.findOneAndUpdate(
         { company: companyId, isDeleted: false },
-        { $set: { isDeleted: true, deletedAt: new Date(), updatedBy: req.user!.id } },
+        {
+          $set: {
+            isDeleted: true,
+            deletedAt: new Date(),
+            updatedBy: new Types.ObjectId(req.user!.id),
+          },
+        },
         { new: true }
       );
 
-      if (!config) { res.status(404).json({ message: 'Config not found' }); return; }
+      if (!config) {
+        res.status(404).json({ message: 'Config not found' });
+        return;
+      }
       res.json({ message: 'WhatsApp template config deleted' });
     } catch (err: unknown) {
       res.status(500).json({ message: 'Failed to delete config', error: (err as Error).message });

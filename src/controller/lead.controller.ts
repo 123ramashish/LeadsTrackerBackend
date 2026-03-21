@@ -37,7 +37,6 @@ type SortField = typeof VALID_SORT_FIELDS[number];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Returns a Mongoose filter that hard-scopes every query to the caller's company. */
 const companyScope = (user: AuthUser, extra: Record<string, unknown> = {}) => {
   const base: Record<string, unknown> = { isDeleted: false, ...extra };
   if (user.role !== UserRole.SUPER_ADMIN) {
@@ -46,7 +45,6 @@ const companyScope = (user: AuthUser, extra: Record<string, unknown> = {}) => {
   return base;
 };
 
-/** Fire-and-forget activity logger — never throws. */
 const logActivity = async (
   leadId: string,
   companyId: string,
@@ -71,12 +69,10 @@ const logActivity = async (
       ...opts,
     });
   } catch (err) {
-    // Activity logging must never break the main request flow
     console.error('[Activity Log Error]', err);
   }
 };
 
-/** Parses and validates a MongoDB ObjectId; throws AppError on failure. */
 const toObjectId = (value: string, fieldName = 'ID'): Types.ObjectId => {
   if (!mongoose.Types.ObjectId.isValid(value)) {
     throw new AppError(`Invalid ${fieldName}`, 400);
@@ -84,7 +80,6 @@ const toObjectId = (value: string, fieldName = 'ID'): Types.ObjectId => {
   return new Types.ObjectId(value);
 };
 
-/** Validates an enum value; throws AppError on failure. */
 const assertEnum = <T extends string>(
   value: unknown,
   enumObj: Record<string, T>,
@@ -122,13 +117,11 @@ export const createLead = async (
 
     if (!name) throw new AppError('Lead name is required', 400);
 
-    // Validate enums up-front for clear error messages
     assertEnum(status,   LeadStatus,   'lead status');
     assertEnum(type,     LeadType,     'lead type');
     assertEnum(source,   LeadSource,   'lead source');
     assertEnum(priority, LeadPriority, 'priority');
-
-    // Resolve companyId — super-admin may target a specific company
+console.log("user",user)
     let companyId = user.companyId;
     if (user.role === UserRole.SUPER_ADMIN && req.body.company) {
       const targetCompany = await Company.findById(req.body.company);
@@ -164,7 +157,6 @@ export const createLead = async (
       lastActivityAt:  new Date(),
     });
 
-    // Compute initial score using the schema instance method
     lead.computeScore();
     await lead.save();
 
@@ -181,6 +173,241 @@ export const createLead = async (
   }
 };
 
+// ─── BULK CREATE LEADS (duplicate-safe) ───────────────────────────────────────
+//
+//  POST /leads/bulk
+//
+//  Accepts an array of lead objects. For each lead:
+//    - A duplicate is defined as a record in the same company with the same
+//      email OR the same phone (matching the unique sparse indexes).
+//    - Duplicates are silently skipped — NOT returned as errors.
+//
+//  Response shape:
+//  {
+//    success: true,
+//    data: {
+//      created:          Lead[],   // successfully inserted docs
+//      createdCount:     number,
+//      duplicateCount:   number,
+//      duplicates:       { index, field, value, existingId }[],  // detail per dup
+//      failedCount:      number,
+//      failed:           { index, error }[],   // non-duplicate errors
+//    }
+//  }
+//
+export const bulkCreateLeads = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const user = req.user!;
+    const leads: Record<string, unknown>[] = req.body.leads;
+
+    // ── Validate top-level input ──────────────────────────────────────────
+    if (!Array.isArray(leads) || leads.length === 0) {
+      throw new AppError('leads must be a non-empty array', 400);
+    }
+    if (leads.length > 500) {
+      throw new AppError('Maximum 500 leads per bulk request', 400);
+    }
+
+    // ── Resolve companyId ─────────────────────────────────────────────────
+    let companyId = user.companyId;
+    if (user.role === UserRole.SUPER_ADMIN && req.body.company) {
+      const targetCompany = await Company.findById(req.body.company);
+      if (!targetCompany || !(targetCompany as any).isActive) {
+        throw new AppError('Invalid or inactive company', 400);
+      }
+      companyId = String(req.body.company);
+    }
+    const companyObjId = new Types.ObjectId(companyId);
+
+    // ── Pre-flight: load all existing emails + phones for this company ────
+    //   One query instead of N queries — far cheaper at scale.
+    const incomingEmails = leads
+      .map(l => l.email ? String(l.email).toLowerCase().trim() : null)
+      .filter(Boolean) as string[];
+
+    const incomingPhones = leads
+      .map(l => l.phone ? String(l.phone).trim() : null)
+      .filter(Boolean) as string[];
+
+    // Fetch existing records that would conflict
+    const existingConflicts = await Lead.find({
+      company:   companyObjId,
+      isDeleted: false,
+      $or: [
+        ...(incomingEmails.length ? [{ email: { $in: incomingEmails } }] : []),
+        ...(incomingPhones.length ? [{ phone: { $in: incomingPhones } }] : []),
+      ],
+    }).select('_id email phone').lean();
+
+    // Build lookup maps for O(1) duplicate detection
+    const existingEmailMap = new Map<string, string>(); // email → _id
+    const existingPhoneMap = new Map<string, string>(); // phone → _id
+    for (const doc of existingConflicts) {
+      if (doc.email) existingEmailMap.set(doc.email, String(doc._id));
+      if (doc.phone) existingPhoneMap.set(doc.phone, String(doc._id));
+    }
+
+    // ── Process each lead ─────────────────────────────────────────────────
+    const created:    any[]                                           = [];
+    const duplicates: { index: number; field: string; value: string; existingId: string }[] = [];
+    const failed:     { index: number; error: string }[]             = [];
+
+    // Track emails/phones we've already seen in THIS batch to catch intra-batch dups
+    const batchEmailsSeen = new Map<string, number>(); // email → first-seen index
+    const batchPhonesSeen = new Map<string, number>(); // phone → first-seen index
+
+    for (let i = 0; i < leads.length; i++) {
+      const raw = leads[i];
+
+      // ── Per-item validation ───────────────────────────────────────────
+      if (!raw.name) {
+        failed.push({ index: i, error: 'name is required' });
+        continue;
+      }
+
+      const email   = raw.email   ? String(raw.email).toLowerCase().trim()   : undefined;
+      const phone   = raw.phone   ? String(raw.phone).trim()                 : undefined;
+
+      // ── Check against existing DB records ─────────────────────────────
+      if (email && existingEmailMap.has(email)) {
+        duplicates.push({ index: i, field: 'email', value: email, existingId: existingEmailMap.get(email)! });
+        continue;
+      }
+      if (phone && existingPhoneMap.has(phone)) {
+        duplicates.push({ index: i, field: 'phone', value: phone, existingId: existingPhoneMap.get(phone)! });
+        continue;
+      }
+
+      // ── Check for intra-batch duplicates ──────────────────────────────
+      if (email && batchEmailsSeen.has(email)) {
+        duplicates.push({ index: i, field: 'email', value: email, existingId: `batch[${batchEmailsSeen.get(email)}]` });
+        continue;
+      }
+      if (phone && batchPhonesSeen.has(phone)) {
+        duplicates.push({ index: i, field: 'phone', value: phone, existingId: `batch[${batchPhonesSeen.get(phone)}]` });
+        continue;
+      }
+
+      // Mark as seen in this batch
+      if (email) batchEmailsSeen.set(email, i);
+      if (phone) batchPhonesSeen.set(phone, i);
+
+      // ── Build the document ────────────────────────────────────────────
+      try {
+        const doc = await Lead.create({
+          name:         String(raw.name).trim(),
+          email,
+          phone,
+          whatsapp:     raw.whatsapp   ? String(raw.whatsapp).trim()   : undefined,
+          website:      raw.website    ? String(raw.website).trim()    : undefined,
+          address:      raw.address    ? String(raw.address).trim()    : undefined,
+          googleMapUrl: raw.googleMapUrl ? String(raw.googleMapUrl)    : undefined,
+          companyName:  raw.companyName  ? String(raw.companyName)     : undefined,
+
+          // Scraper-specific fields
+          businessName:    raw.businessName    ? String(raw.businessName).trim()  : undefined,
+          rating:          raw.rating          != null ? Number(raw.rating)        : undefined,
+          numberOfReviews: raw.numberOfReviews != null ? Number(raw.numberOfReviews) : undefined,
+          category:        raw.category        ? String(raw.category).trim()       : undefined,
+          googleMapsData:  raw.googleMapsData  ?? undefined,
+
+          // Classification — validated with fallback to defaults
+          status:   Object.values(LeadStatus).includes(raw.status as LeadStatus)
+                      ? (raw.status as LeadStatus)   : LeadStatus.CREATED,
+          type:     Object.values(LeadType).includes(raw.type as LeadType)
+                      ? (raw.type as LeadType)       : LeadType.LEAD,
+          source:   Object.values(LeadSource).includes(raw.source as LeadSource)
+                      ? (raw.source as LeadSource)   : LeadSource.OTHER,
+          priority: Object.values(LeadPriority).includes(raw.priority as LeadPriority)
+                      ? (raw.priority as LeadPriority) : LeadPriority.MEDIUM,
+
+          isFavorite:    Boolean(raw.isFavorite ?? false),
+          tags:          Array.isArray(raw.tags) ? raw.tags.map(String) : [],
+          customFields:  raw.customFields ?? undefined,
+          estimatedValue: raw.estimatedValue != null ? Number(raw.estimatedValue) : undefined,
+
+          company:         companyObjId,
+          createdBy:       new Types.ObjectId(user.id),
+          assignedTo:      raw.assignedTo && mongoose.Types.ObjectId.isValid(String(raw.assignedTo))
+                             ? new Types.ObjectId(String(raw.assignedTo))
+                             : undefined,
+          nextFollowUp:    raw.nextFollowUp ? new Date(String(raw.nextFollowUp)) : undefined,
+          statusUpdatedAt: new Date(),
+          lastActivityAt:  new Date(),
+        });
+
+        // Compute initial score
+        doc.computeScore();
+        await doc.save();
+
+        created.push(doc);
+
+        // Also register in maps so subsequent batch items don't re-insert
+        if (email) existingEmailMap.set(email, String(doc._id));
+        if (phone) existingPhoneMap.set(phone, String(doc._id));
+
+      } catch (err: any) {
+        // Catch Mongo duplicate key error that slipped through pre-flight
+        // (race condition between two concurrent bulk imports)
+        if (err.code === 11000) {
+          const dupField = err.keyPattern?.email ? 'email' : 'phone';
+          const dupValue = dupField === 'email' ? email : phone;
+          duplicates.push({
+            index: i,
+            field: dupField,
+            value: dupValue ?? '',
+            existingId: 'concurrent_insert',
+          });
+        } else {
+          failed.push({ index: i, error: err.message ?? 'Unknown error' });
+        }
+      }
+    }
+
+    // ── Fire-and-forget bulk activity log ─────────────────────────────────
+    if (created.length > 0) {
+      const activityDocs = created.map(lead => ({
+        leadId:      lead._id,
+        companyId:   companyObjId,
+        performedBy: new Types.ObjectId(user.id),
+        type:        ActivityType.LEAD_CREATED,
+        title:       `Lead "${lead.name}" created via bulk import`,
+        activityDate: new Date(),
+        metadata:    { bulkOperation: true, source: lead.source },
+      }));
+
+      Activity.insertMany(activityDocs, { ordered: false }).catch(err =>
+        console.error('[Bulk Activity Log Error]', err)
+      );
+    }
+
+    // ── Response ──────────────────────────────────────────────────────────
+    const response: ApiResponse = {
+      success: true,
+      message: `${created.length} lead(s) created, ${duplicates.length} duplicate(s) skipped, ${failed.length} failed`,
+      data: {
+        createdCount:   created.length,
+        duplicateCount: duplicates.length,
+        failedCount:    failed.length,
+        created,
+        duplicates,
+        failed,
+      },
+    };
+
+    // Use 207 Multi-Status when there were partial failures / skips
+    const statusCode = failed.length > 0 ? 207 : 201;
+    res.status(statusCode).json(response);
+
+  } catch (err) {
+    next(err);
+  }
+};
+
 // ─── GET LEADS (list with full filtering + pagination) ────────────────────────
 
 export const getLeads = async (
@@ -192,41 +419,43 @@ export const getLeads = async (
     const user = req.user!;
     const q    = req.query as Record<string, string | undefined>;
 
-    // ── Pagination ──
     const page  = Math.max(1, parseInt(q.page  ?? '1',  10));
     const limit = Math.min(100, Math.max(1, parseInt(q.limit ?? '20', 10)));
     const skip  = (page - 1) * limit;
 
-    // ── Base query with company isolation ──
     const filter = companyScope(user);
 
-    // ── Enum filters ──
     if (q.status)   filter.status   = q.status;
     if (q.type)     filter.type     = q.type;
     if (q.source)   filter.source   = q.source;
     if (q.priority) filter.priority = q.priority;
+    if (q.category) filter.category = q.category;
 
-    // ── Boolean filters ──
     if (q.isFavorite !== undefined) filter.isFavorite = q.isFavorite === 'true';
 
-    // ── ObjectId filters ──
     if (q.assignedTo && mongoose.Types.ObjectId.isValid(q.assignedTo)) {
       filter.assignedTo = new Types.ObjectId(q.assignedTo);
     }
 
-    // ── Tags ($in — accepts comma-separated or repeated query param) ──
     if (q.tags) {
       const tagList = String(q.tags).split(',').map(t => t.trim()).filter(Boolean);
       if (tagList.length) filter.tags = { $in: tagList };
     }
 
-    // ── Numeric range filters ──
     if (q.minScore !== undefined || q.maxScore !== undefined) {
       const scoreRange: Record<string, number> = {};
       if (q.minScore) scoreRange.$gte = Number(q.minScore);
       if (q.maxScore) scoreRange.$lte = Number(q.maxScore);
       filter.score = scoreRange;
     }
+
+    if (q.minRating !== undefined || q.maxRating !== undefined) {
+      const ratingRange: Record<string, number> = {};
+      if (q.minRating) ratingRange.$gte = Number(q.minRating);
+      if (q.maxRating) ratingRange.$lte = Number(q.maxRating);
+      filter.rating = ratingRange;
+    }
+
     if (q.minValue !== undefined || q.maxValue !== undefined) {
       const valRange: Record<string, number> = {};
       if (q.minValue) valRange.$gte = Number(q.minValue);
@@ -234,13 +463,11 @@ export const getLeads = async (
       filter.estimatedValue = valRange;
     }
 
-    // ── Overdue follow-ups ──
     if (q.overdueFollowUp === 'true') {
       filter.nextFollowUp = { $lte: new Date() };
       filter.status = { $nin: [LeadStatus.WON, LeadStatus.LOST] };
     }
 
-    // ── createdAt date range ──
     if (q.dateFrom || q.dateTo) {
       const dateRange: Record<string, Date> = {};
       if (q.dateFrom) dateRange.$gte = new Date(q.dateFrom);
@@ -248,12 +475,10 @@ export const getLeads = async (
       filter.createdAt = dateRange;
     }
 
-    // ── Full-text search (uses the compound text index on name/email/companyName/address) ──
     if (q.search) {
       filter.$text = { $search: q.search };
     }
 
-    // ── Sorting (whitelist guard) ──
     const sortField: SortField = VALID_SORT_FIELDS.includes(q.sortBy as SortField)
       ? (q.sortBy as SortField)
       : 'createdAt';
@@ -283,7 +508,7 @@ export const getLeads = async (
   }
 };
 
-// ─── GET SINGLE LEAD (with optional activity timeline) ────────────────────────
+// ─── GET SINGLE LEAD ──────────────────────────────────────────────────────────
 
 export const getLeadById = async (
   req: AuthRequest,
@@ -293,9 +518,9 @@ export const getLeadById = async (
   try {
     const user = req.user!;
     const { id } = req.params as any;
-    const includeTimeline = req.query.includeTimeline !== 'false'; // default: true
+    const includeTimeline = req.query.includeTimeline !== 'false';
 
-    toObjectId(id, 'lead ID'); // validation only
+    toObjectId(id, 'lead ID');
 
     const filter = companyScope(user, { _id: id });
     const lead = await Lead.findOne(filter)
@@ -323,7 +548,7 @@ export const getLeadById = async (
   }
 };
 
-// ─── UPDATE LEAD (basic field edits) ─────────────────────────────────────────
+// ─── UPDATE LEAD ──────────────────────────────────────────────────────────────
 
 export const updateLead = async (
   req: AuthRequest,
@@ -340,9 +565,9 @@ export const updateLead = async (
       'name', 'email', 'phone', 'whatsapp', 'website',
       'address', 'googleMapUrl', 'companyName',
       'estimatedValue', 'actualValue', 'tags', 'customFields',
+      'businessName', 'rating', 'numberOfReviews', 'category', 'googleMapsData',
     ] as const;
 
-    // Fetch current doc to detect actual changes
     const filter  = companyScope(user, { _id: id });
     const current = await Lead.findOne(filter);
     if (!current) throw new AppError('Lead not found', 404);
@@ -356,7 +581,6 @@ export const updateLead = async (
         ? String(req.body[key]).toLowerCase()
         : req.body[key];
 
-      // Only include fields that actually changed
       if (JSON.stringify((current as any)[key]) !== JSON.stringify(incoming)) {
         updates[key] = incoming;
         changedFields.push(key);
@@ -409,20 +633,16 @@ export const updateLeadStatus = async (
     if (!current) throw new AppError('Lead not found', 404);
 
     const previousStatus = current.status;
-
-    // Mutate and let the pre-save middleware handle statusUpdatedAt / convertedAt / lostAt
     current.status    = status;
     current.updatedBy = new Types.ObjectId(user.id) as any;
-
-    // Recompute score after the status change
     current.computeScore();
     await current.save();
 
     await logActivity(id, user.companyId, user.id, ActivityType.STATUS_CHANGED,
       `Status changed: ${previousStatus} → ${status}`, {
-      description:    notes,
-      previousValue:  previousStatus,
-      newValue:       status,
+      description:   notes,
+      previousValue: previousStatus,
+      newValue:      status,
     });
 
     const response: ApiResponse = { success: true, data: current };
@@ -452,7 +672,6 @@ export const updateLeadType = async (
     if (!current) throw new AppError('Lead not found', 404);
 
     const previousType = current.type;
-
     const updated = await Lead.findOneAndUpdate(
       filter,
       { $set: { type, updatedBy: new Types.ObjectId(user.id), lastActivityAt: new Date() } },
@@ -492,7 +711,6 @@ export const updateLeadPriority = async (
     if (!current) throw new AppError('Lead not found', 404);
 
     const previousPriority = current.priority;
-
     const updated = await Lead.findOneAndUpdate(
       filter,
       { $set: { priority, updatedBy: new Types.ObjectId(user.id), lastActivityAt: new Date() } },
@@ -532,7 +750,6 @@ export const assignLead = async (
     if (!current) throw new AppError('Lead not found', 404);
 
     const previousAssignee = current.assignedTo;
-
     const updated = await Lead.findOneAndUpdate(
       filter,
       { $set: { assignedTo: assigneeId, updatedBy: new Types.ObjectId(user.id), lastActivityAt: new Date() } },
@@ -573,18 +790,12 @@ export const markLeadContacted = async (
     const lead   = await Lead.findOne(filter);
     if (!lead) throw new AppError('Lead not found', 404);
 
-    // Increment engagement counter for the interaction type
     if (interactionType === 'email')   lead.emailsSent   += 1;
     if (interactionType === 'call')    lead.callsMade    += 1;
     if (interactionType === 'meeting') lead.meetingsHeld += 1;
 
     lead.updatedBy = new Types.ObjectId(user.id) as any;
-
-    // Uses the schema instance method: stamps lastContacted, increments totalInteractions,
-    // advances status CREATED → CONTACTED, and saves
     await lead.markContacted();
-
-    // Recompute score after engagement counters updated
     lead.computeScore();
     await lead.save();
 
@@ -612,10 +823,7 @@ export const toggleFavorite = async (
     const { isFavorite } = req.body as { isFavorite: boolean };
 
     toObjectId(id, 'lead ID');
-
-    if (typeof isFavorite !== 'boolean') {
-      throw new AppError('isFavorite must be a boolean', 400);
-    }
+    if (typeof isFavorite !== 'boolean') throw new AppError('isFavorite must be a boolean', 400);
 
     const filter  = companyScope(user, { _id: id });
     const updated = await Lead.findOneAndUpdate(
@@ -650,7 +858,6 @@ export const scheduleFollowUp = async (
     const { followUpDate, notes } = req.body as { followUpDate: string; notes?: string };
 
     toObjectId(id, 'lead ID');
-
     if (!followUpDate) throw new AppError('followUpDate is required', 400);
     const followUpDt = new Date(followUpDate);
     if (isNaN(followUpDt.getTime())) throw new AppError('followUpDate is not a valid date', 400);
@@ -729,7 +936,6 @@ export const deleteLead = async (
 
     if (!lead) throw new AppError('Lead not found', 404);
 
-    // Uses the schema instance method: stamps isDeleted / deletedAt / deletedBy and saves
     await lead.softDelete(deletedById);
 
     const response: ApiResponse = { success: true, message: 'Lead moved to trash' };
@@ -774,7 +980,6 @@ export const bulkUpdateStatus = async (
       },
     });
 
-    // Log for each affected lead (non-blocking)
     leadIds.forEach(lid =>
       logActivity(lid, user.companyId, user.id, ActivityType.STATUS_CHANGED,
         `Bulk status update → ${status}`, {
@@ -829,13 +1034,8 @@ export const getLeadAnalytics = async (
     ];
 
     const [
-      statusDist,
-      typeDist,
-      sourceDist,
-      priorityDist,
-      scoreBuckets,
-      totals,
-      overdueCount,
+      statusDist, typeDist, sourceDist, priorityDist,
+      scoreBuckets, totals, overdueCount,
     ] = await Promise.all([
       Lead.aggregate([
         { $match: matchQuery },
@@ -860,15 +1060,15 @@ export const getLeadAnalytics = async (
         { $match: matchQuery },
         {
           $group: {
-            _id:                   null,
-            totalLeads:            { $sum: 1 },
-            avgScore:              { $avg: '$score' },
-            totalEstimatedValue:   { $sum: '$estimatedValue' },
-            totalActualValue:      { $sum: '$actualValue' },
-            avgInteractions:       { $avg: '$totalInteractions' },
-            totalEmailsSent:       { $sum: '$emailsSent' },
-            totalCallsMade:        { $sum: '$callsMade' },
-            totalMeetingsHeld:     { $sum: '$meetingsHeld' },
+            _id:                 null,
+            totalLeads:          { $sum: 1 },
+            avgScore:            { $avg: '$score' },
+            totalEstimatedValue: { $sum: '$estimatedValue' },
+            totalActualValue:    { $sum: '$actualValue' },
+            avgInteractions:     { $avg: '$totalInteractions' },
+            totalEmailsSent:     { $sum: '$emailsSent' },
+            totalCallsMade:      { $sum: '$callsMade' },
+            totalMeetingsHeld:   { $sum: '$meetingsHeld' },
           },
         },
       ]),
@@ -882,13 +1082,13 @@ export const getLeadAnalytics = async (
     const response: ApiResponse = {
       success: true,
       data: {
-        overview:           totals[0] ?? {},
-        statusDistribution: statusDist,
-        typeDistribution:   typeDist,
-        sourceDistribution: sourceDist,
+        overview:             totals[0] ?? {},
+        statusDistribution:   statusDist,
+        typeDistribution:     typeDist,
+        sourceDistribution:   sourceDist,
         priorityDistribution: priorityDist,
-        scoreDistribution:  scoreBuckets,
-        overdueFollowUps:   overdueCount,
+        scoreDistribution:    scoreBuckets,
+        overdueFollowUps:     overdueCount,
       },
     };
     res.json(response);
@@ -926,16 +1126,11 @@ export const getConversionFunnel = async (
     }
 
     const FUNNEL_STAGES: LeadStatus[] = [
-      LeadStatus.CREATED,
-      LeadStatus.CONTACTED,
-      LeadStatus.QUALIFIED,
-      LeadStatus.PROPOSAL_SENT,
-      LeadStatus.NEGOTIATION,
-      LeadStatus.WON,
+      LeadStatus.CREATED, LeadStatus.CONTACTED, LeadStatus.QUALIFIED,
+      LeadStatus.PROPOSAL_SENT, LeadStatus.NEGOTIATION, LeadStatus.WON,
     ];
 
     const [funnel, totalLeads, wonLeads, lostLeads] = await Promise.all([
-      // One aggregation for all funnel stages
       Lead.aggregate([
         { $match: matchQuery },
         { $group: { _id: '$status', count: { $sum: 1 } } },
@@ -955,14 +1150,7 @@ export const getConversionFunnel = async (
       success: true,
       data: {
         funnel,
-        summary: {
-          totalLeads,
-          wonLeads,
-          lostLeads,
-          activeLeads:    totalLeads - wonLeads - lostLeads,
-          conversionRate,
-          lossRate,
-        },
+        summary: { totalLeads, wonLeads, lostLeads, activeLeads: totalLeads - wonLeads - lostLeads, conversionRate, lossRate },
       },
     };
     res.json(response);
@@ -982,7 +1170,6 @@ export const getOverdueFollowUps = async (
     const user = req.user!;
     const q    = req.query as Record<string, string | undefined>;
 
-    // Leverage the schema static method; super-admin gets all companies
     const filter: Record<string, unknown> = {
       isDeleted:    false,
       nextFollowUp: { $lte: new Date() },

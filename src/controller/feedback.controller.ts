@@ -23,7 +23,7 @@ const sanitizeSubmitterData = (data: Partial<IFeedback>) => {
 export default class FeedbackController {
   // ─── SUBMIT FEEDBACK (Public or Authenticated) ─────────────────────────────
   async submitFeedback(req: Request, res: Response) {
-    console.log("api call")
+    console.log("api calljjh")
     try {
       const {
         companyId,
@@ -37,9 +37,8 @@ export default class FeedbackController {
       } =  req.body;
 console.log("api call",req.body)
       // Validation
-      if (!companyId || !mongoose.Types.ObjectId.isValid(companyId as string)) {
-        res.status(400).json({ message: 'Valid companyId is required' });
-        return;
+      if (!companyId) {
+       return res.status(400).json({ message: 'Valid companyId is required' });
       }
       if (!rating || rating < 1 || rating > 5) {
         res.status(400).json({ message: 'Rating must be between 1 and 5' });
@@ -51,7 +50,7 @@ console.log("api call",req.body)
       }
 
       // Verify company exists and is active
-      const company = await Company.findById(companyId).select('isActive isDeleted');
+      const company = await Company.findById(new mongoose.Types.ObjectId(companyId)).select('isActive isDeleted');
       if (!company || company.isDeleted || !company.isActive) {
         res.status(404).json({ message: 'Company not found or inactive' });
         return;
@@ -59,7 +58,7 @@ console.log("api call",req.body)
 
       // Prepare feedback document
       const feedbackData: Partial<IFeedback> = {
-        company: companyId,
+        company: new mongoose.Types.ObjectId(companyId),
         rating,
         comment: comment?.trim(),
         sentiment: deriveSentiment(rating),
@@ -95,7 +94,7 @@ console.log("api call",req.body)
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : 'Unknown error';
       console.error('[submitFeedback]', error);
-      res.status(500).json({ message: 'Failed to submit feedback', error: msg });
+     return res.status(500).json({ message: 'Failed to submit feedback', error: msg });
     }
   }
 

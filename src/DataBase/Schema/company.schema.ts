@@ -30,6 +30,7 @@ export interface ICompany extends Document {
   deletedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
+  GOOGLE_REVIEW_URL?: string;
 }
 
 export interface ICompanyModel extends Model<ICompany> {}
@@ -65,6 +66,7 @@ const companySchema = new Schema<ICompany, ICompanyModel>(
     isActive: { type: Boolean, default: true },
     isDeleted: { type: Boolean, default: false },
     deletedAt: Date,
+    GOOGLE_REVIEW_URL: String,
   },
   { timestamps: true }
 );

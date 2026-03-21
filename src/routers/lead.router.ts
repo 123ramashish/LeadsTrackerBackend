@@ -17,7 +17,8 @@ import { createLead ,  getLeads,
   bulkUpdateStatus,
   getLeadAnalytics,
   getConversionFunnel,
-  getOverdueFollowUps,} from '../controller/lead.controller';
+  getOverdueFollowUps,
+  bulkCreateLeads,} from '../controller/lead.controller';
 
 const leadRouter = Router();
 
@@ -25,6 +26,7 @@ const leadRouter = Router();
 const ctrl = {
   // CRUD
   create:          createLead,
+  bulkCreateLeads: bulkCreateLeads,
   getAll:          getLeads,
   getById:         getLeadById,
   update:          updateLead,
@@ -60,21 +62,21 @@ const admin = authorizeRoles([USER_ROLES.ADMIN]);
  * @desc    Overall lead stats (totals by status, source, priority, etc.)
  * @access  Authenticated
  */
-leadRouter.get('/analytics/overview', authenticate, ctrl.analyticsOverview);
+leadRouter.get('/analytics/overview', ctrl.analyticsOverview);
 
 /**
  * @route   GET /api/leads/analytics/funnel
  * @desc    Conversion funnel across pipeline stages
  * @access  Authenticated
  */
-leadRouter.get('/analytics/funnel', authenticate, ctrl.analyticsFunnel);
+leadRouter.get('/analytics/funnel', ctrl.analyticsFunnel);
 
 /**
  * @route   GET /api/leads/analytics/overdue
  * @desc    Leads whose nextFollowUp date has passed
  * @access  Authenticated
  */
-leadRouter.get('/analytics/overdue', authenticate, ctrl.analyticsOverdue);
+leadRouter.get('/analytics/overdue',  ctrl.analyticsOverdue);
 
 // ─── Bulk Operations (also before /:id) ──────────────────────────────────────
 /**
@@ -83,7 +85,7 @@ leadRouter.get('/analytics/overdue', authenticate, ctrl.analyticsOverdue);
  * @body    { ids: string[], status: LeadStatus }
  * @access  Admin
  */
-leadRouter.patch('/bulk/status', authenticate, admin, ctrl.bulkUpdateStatus);
+leadRouter.patch('/bulk/status', ctrl.bulkUpdateStatus);
 
 // ─── CRUD ─────────────────────────────────────────────────────────────────────
 /**
@@ -92,7 +94,7 @@ leadRouter.patch('/bulk/status', authenticate, admin, ctrl.bulkUpdateStatus);
  * @query   page, limit, search, status, type, source, priority, assignedTo, isFavorite
  * @access  Authenticated
  */
-leadRouter.get('/', authenticate, ctrl.getAll);
+leadRouter.get('/', ctrl.getAll);
 
 /**
  * @route   POST /api/leads
@@ -102,14 +104,16 @@ leadRouter.get('/', authenticate, ctrl.getAll);
  *            assignedTo?, estimatedValue?, nextFollowUp? }
  * @access  Authenticated
  */
-leadRouter.post('/', authenticate, ctrl.create);
+leadRouter.post('/',authenticate, ctrl.create);
 
+//. create bul leads
+leadRouter.post('/bulk', ctrl.bulkCreateLeads);
 /**
  * @route   GET /api/leads/:id
  * @desc    Get a single lead by ID
  * @access  Authenticated
  */
-leadRouter.get('/:id', authenticate, ctrl.getById);
+leadRouter.get('/:id', ctrl.getById);
 
 /**
  * @route   PUT /api/leads/:id
@@ -117,14 +121,14 @@ leadRouter.get('/:id', authenticate, ctrl.getById);
  * @body    Any writable lead fields
  * @access  Authenticated
  */
-leadRouter.put('/:id', authenticate, ctrl.update);
+leadRouter.put('/:id',  ctrl.update);
 
 /**
  * @route   DELETE /api/leads/:id
  * @desc    Soft-delete a lead
  * @access  Admin
  */
-leadRouter.delete('/:id', authenticate, admin, ctrl.delete);
+leadRouter.delete('/:id',   ctrl.delete);
 
 // ─── Status & Classification ─────────────────────────────────────────────────
 /**
@@ -132,28 +136,28 @@ leadRouter.delete('/:id', authenticate, admin, ctrl.delete);
  * @body    { status: LeadStatus }
  * @access  Authenticated
  */
-leadRouter.patch('/:id/status', authenticate, ctrl.updateStatus);
+leadRouter.patch('/:id/status', ctrl.updateStatus);
 
 /**
  * @route   PATCH /api/leads/:id/type
  * @body    { type: LeadType }
  * @access  Authenticated
  */
-leadRouter.patch('/:id/type', authenticate, ctrl.updateType);
+leadRouter.patch('/:id/type', ctrl.updateType);
 
 /**
  * @route   PATCH /api/leads/:id/priority
  * @body    { priority: LeadPriority }
  * @access  Authenticated
  */
-leadRouter.patch('/:id/priority', authenticate, ctrl.updatePriority);
+leadRouter.patch('/:id/priority',  ctrl.updatePriority);
 
 /**
  * @route   PATCH /api/leads/:id/favorite
  * @desc    Toggle isFavorite flag
  * @access  Authenticated
  */
-leadRouter.patch('/:id/favorite', authenticate, ctrl.toggleFavorite);
+leadRouter.patch('/:id/favorite',  ctrl.toggleFavorite);
 
 // ─── Assignment & Follow-up ──────────────────────────────────────────────────
 /**
@@ -161,14 +165,14 @@ leadRouter.patch('/:id/favorite', authenticate, ctrl.toggleFavorite);
  * @body    { assignedTo: string }
  * @access  Admin
  */
-leadRouter.patch('/:id/assign', authenticate, admin, ctrl.assign);
+leadRouter.patch('/:id/assign',   ctrl.assign);
 
 /**
  * @route   POST /api/leads/:id/follow-up
  * @body    { nextFollowUp: ISO date string, note?: string }
  * @access  Authenticated
  */
-leadRouter.post('/:id/follow-up', authenticate, ctrl.scheduleFollowUp);
+leadRouter.post('/:id/follow-up', ctrl.scheduleFollowUp);
 
 // ─── Notes & Activities ──────────────────────────────────────────────────────
 /**
@@ -176,6 +180,6 @@ leadRouter.post('/:id/follow-up', authenticate, ctrl.scheduleFollowUp);
  * @body    { text: string }
  * @access  Authenticated
  */
-leadRouter.post('/:id/notes', authenticate, ctrl.addNote);
+leadRouter.post('/:id/notes',  ctrl.addNote);
 
 export default leadRouter;
