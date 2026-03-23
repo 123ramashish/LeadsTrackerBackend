@@ -107,7 +107,7 @@ leadRouter.get('/', ctrl.getAll);
 leadRouter.post('/',authenticate, ctrl.create);
 
 //. create bul leads
-leadRouter.post('/bulk', ctrl.bulkCreateLeads);
+leadRouter.post('/bulk',authenticate, ctrl.bulkCreateLeads);
 /**
  * @route   GET /api/leads/:id
  * @desc    Get a single lead by ID

@@ -39,9 +39,9 @@ type SortField = typeof VALID_SORT_FIELDS[number];
 
 const companyScope = (user: AuthUser, extra: Record<string, unknown> = {}) => {
   const base: Record<string, unknown> = { isDeleted: false, ...extra };
-  if (user.role !== UserRole.SUPER_ADMIN) {
-    base.company = new Types.ObjectId(user.companyId);
-  }
+  // if (user.role !== UserRole.SUPER_ADMIN) {
+  //   base.company = new Types.ObjectId(user.companyId);
+  // }
   return base;
 };
 
