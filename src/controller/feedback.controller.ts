@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import mongoose from 'mongoose';
-import Feedback, { IFeedback, FEEDBACK_STATUS, FEEDBACK_SENTIMENT } from '../DataBase/Schema/feedback.schema';
+import Feedback, { IFeedback, FEEDBACK_STATUS, FEEDBACK_SENTIMENT } from '../DataBase/Schema/clinivo/feedback.schema';
 import User, { USER_ROLES, IUser } from '../DataBase/Schema/user.schema';
 import Company from '../DataBase/Schema/company.schema';
 

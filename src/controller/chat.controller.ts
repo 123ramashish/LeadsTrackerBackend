@@ -1,8 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import mongoose, { Types } from 'mongoose';
-import Chat, { IChat, MessageSender } from '../DataBase/Schema/Chat.schema';
-import Lead from '../DataBase/Schema/Leads.schema';
-import Activity, { ActivityType } from '../DataBase/Schema/Activity.schema';
+import Chat, { IChat, MessageSender } from '../DataBase/Schema/leads/Chat.schema';
+import Lead from '../DataBase/Schema/leads/Leads.schema';
+import Activity, { ActivityType } from '../DataBase/Schema/leads/Activity.schema';
 import { AppError } from '../middlewares/errorHandler';
 import { USER_ROLES, type ApiResponse } from '../types';
 

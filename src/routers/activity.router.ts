@@ -2,8 +2,8 @@ import { Router } from 'express';
 import { Request, Response } from 'express';
 import mongoose from 'mongoose';
 import { authenticate, authorizeRoles } from '../middlewares/auth.middleware';
-import Activity, { ActivityType } from '../DataBase/Schema/Activity.schema';
-import Lead from '../DataBase/Schema/Leads.schema';
+import Activity, { ActivityType } from '../DataBase/Schema/leads/Activity.schema';
+import Lead from '../DataBase/Schema/leads/Leads.schema';
 import { USER_ROLES } from '../types';
 
 const router = Router();

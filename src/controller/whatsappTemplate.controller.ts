@@ -1,7 +1,7 @@
 // controller/whatsappTemplate.controller.ts
 import { Request, Response } from 'express';
 import mongoose, { Types } from 'mongoose';
-import WhatsAppTemplateConfig, { ICategory } from '../DataBase/Schema/whatsappTemplate.schema';
+import WhatsAppTemplateConfig, { ICategory } from '../DataBase/Schema/clinivo/whatsappTemplate.schema';
 
 // ── Augmented Request (set by auth middleware) ─────────────────────────────────
 interface AuthRequest extends Request {

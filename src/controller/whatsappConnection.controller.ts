@@ -4,7 +4,7 @@ import mongoose from 'mongoose';
 import WhatsAppConnection, {
   WA_CONNECTION_STATUS,
   IWhatsAppConnection,
-} from '../DataBase/Schema/whatsappConnection.schema';
+} from '../DataBase/Schema/clinivo/whatsappconnection.schema';
 
 // ── NOTE: Replace these imports with your actual WA library ───────────────────
 // Popular choices: @whiskeysockets/baileys, whatsapp-web.js, or a cloud API
