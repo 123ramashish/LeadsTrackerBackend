@@ -1,9 +1,10 @@
 {
   "compilerOptions": {
     /* 🔹 Language & Environment */
-    "target": "ES2020",
+    "target": "es6",
     "lib": ["ES2020"],
     "module": "commonjs",
+    
     "moduleResolution": "node",
 
     /* 🔹 Project Structure */

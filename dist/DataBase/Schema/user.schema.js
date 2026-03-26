@@ -1,4 +1,13 @@
 "use strict";
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -65,48 +74,55 @@ const userSchema = new mongoose_1.default.Schema({
     timestamps: true
 });
 // ✅ STEP 5: Define methods using proper TypeScript syntax
-userSchema.methods.comparePassword = async function (candidate) {
-    try {
-        return await bcrypt_1.default.compare(candidate, this.password);
-    }
-    catch (error) {
-        console.error('Password comparison error:', error);
-        return false;
-    }
+userSchema.methods.comparePassword = function (candidate) {
+    return __awaiter(this, void 0, void 0, function* () {
+        try {
+            return yield bcrypt_1.default.compare(candidate, this.password);
+        }
+        catch (error) {
+            console.error('Password comparison error:', error);
+            return false;
+        }
+    });
 };
 // ✅ STEP 6: Pre-save hook for password hashing
-userSchema.pre('save', async function (next) {
-    if (!this.isModified('password'))
-        return next();
-    if (this.password?.startsWith('$2b$'))
-        return next();
-    try {
-        this.password = await bcrypt_1.default.hash(this.password, 12);
-        next();
-    }
-    catch (error) {
-        next(error);
-    }
+userSchema.pre('save', function (next) {
+    return __awaiter(this, void 0, void 0, function* () {
+        var _a;
+        if (!this.isModified('password'))
+            return next();
+        if ((_a = this.password) === null || _a === void 0 ? void 0 : _a.startsWith('$2b$'))
+            return next();
+        try {
+            this.password = yield bcrypt_1.default.hash(this.password, 12);
+            next();
+        }
+        catch (error) {
+            next(error);
+        }
+    });
 });
 // ✅ STEP 7: Prevent deleting last SuperAdmin
-userSchema.pre('findOneAndUpdate', async function (next) {
-    const update = this.getUpdate();
-    if (!update || typeof update !== 'object') {
-        return next();
-    }
-    const setUpdate = update.$set;
-    if (!setUpdate)
-        return next();
-    if (setUpdate.userRole === exports.USER_ROLES.SUPER_ADMIN && setUpdate.isDeleted) {
-        const superAdminCount = await this.model.countDocuments({
-            userRole: exports.USER_ROLES.SUPER_ADMIN,
-            isDeleted: false
-        });
-        if (superAdminCount <= 1) {
-            return next(new Error('Cannot delete the last SuperAdmin account'));
+userSchema.pre('findOneAndUpdate', function (next) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const update = this.getUpdate();
+        if (!update || typeof update !== 'object') {
+            return next();
         }
-    }
-    next();
+        const setUpdate = update.$set;
+        if (!setUpdate)
+            return next();
+        if (setUpdate.userRole === exports.USER_ROLES.SUPER_ADMIN && setUpdate.isDeleted) {
+            const superAdminCount = yield this.model.countDocuments({
+                userRole: exports.USER_ROLES.SUPER_ADMIN,
+                isDeleted: false
+            });
+            if (superAdminCount <= 1) {
+                return next(new Error('Cannot delete the last SuperAdmin account'));
+            }
+        }
+        next();
+    });
 });
 // ✅ STEP 8: Create and export model with proper types
 const User = mongoose_1.default.model('User', userSchema);
