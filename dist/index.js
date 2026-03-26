@@ -45,7 +45,6 @@ const cookie_parser_1 = __importDefault(require("cookie-parser"));
 const custom_error_1 = require("./middlewares/custom.error");
 const router_1 = __importDefault(require("./routers/router"));
 const database_1 = __importDefault(require("./DataBase/database"));
-require("./routers/auto.router");
 const app = (0, express_1.default)();
 // middlewares
 app.use((0, cors_1.default)());
@@ -55,11 +54,12 @@ app.use(body_parser_1.default.json());
 app.use((0, cookie_parser_1.default)());
 // routers
 app.use("/api", router_1.default);
-app.use((req, res, next) => {
+// 404 handler — prefix unused params with _
+app.use((_req, _res, next) => {
     next(new custom_error_1.CustomError("API route not found", 404));
 });
-// global error handling
-app.use((err, req, res, next) => {
+// global error handling — prefix unused next with _
+app.use((err, _req, res, _next) => {
     if (err instanceof custom_error_1.CustomError) {
         return res.status(err.status).json({ error: err.message });
     }
@@ -67,7 +67,9 @@ app.use((err, req, res, next) => {
     return res.status(500).send("Something is wrong!");
 });
 // Connect DB and Start Server
-app.listen(process.env.PORT, async () => {
+const PORT = process.env.PORT || 8000;
+app.listen(PORT, async () => {
     await (0, database_1.default)();
-    console.log(`Listening ON port ${process.env.PORT || 8000}`);
+    console.log(`Listening ON port ${PORT}`);
 });
+//# sourceMappingURL=index.js.map

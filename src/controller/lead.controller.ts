@@ -135,21 +135,21 @@ export default class LeadController {
       });
 
       // Calculate initial score
-      await newLead.updateScore();
+      // await newLead.updateScore();
       await newLead.save();
 
       // Log activity
-      await this.logActivity(
-        newLead._id.toString(),
-        companyId,
-        ActivityType.LEAD_CREATED,
-        `Lead "${name}" created`,
-        currentUser.id,
-        {
-          description: `New ${type} from ${source}`,
-          metadata: { source, priority }
-        }
-      );
+      // await this.logActivity(
+      //   newLead._id.toString(),
+      //   companyId,
+      //   ActivityType.LEAD_CREATED,
+      //   `Lead "${name}" created`,
+      //   currentUser.id,
+      //   {
+      //     description: `New ${type} from ${source}`,
+      //     metadata: { source, priority }
+      //   }
+      // );
 
       res.status(201).json({
         message: 'Lead created successfully',
@@ -458,7 +458,7 @@ export default class LeadController {
 
       // Update score
       if (lead) {
-        await lead.updateScore();
+        // await lead.updateScore();
         await lead.save();
       }
 

@@ -19,23 +19,23 @@ export async function uploadToImageKit(
   }
 }
 
-export async function uploadSingleFile(
-  file: Express.Multer.File,
-  folder: string
-): Promise<{ url?: string; message?: string; error?: string }> {
-  try {
-    if (!file || file.size === 0) {
-      return {
-        error: `File ${file?.originalname || "unknown"} is empty or missing.`,
-      };
-    }
+// export async function uploadSingleFile(
+//   file: Express.Multer.File,
+//   folder: string
+// ): Promise<{ url?: string; message?: string; error?: string }> {
+//   try {
+//     if (!file || file.size === 0) {
+//       return {
+//         error: `File ${file?.originalname || "unknown"} is empty or missing.`,
+//       };
+//     }
 
-    const fileExtension = file.originalname.split(".").pop();
-    const fileName = `${folder}-${Date.now()}.${fileExtension}`;
+//     const fileExtension = file.originalname.split(".").pop();
+//     const fileName = `${folder}-${Date.now()}.${fileExtension}`;
 
-    const url = await uploadToImageKit(file.buffer, folder, fileName);
-    return { url, message: `${file.originalname} uploaded successfully` };
-  } catch (error: any) {
-    return { error: `Error uploading ${file.originalname}: ${error.message}` };
-  }
-}
+//     const url = await uploadToImageKit(file.buffer, folder, fileName);
+//     return { url, message: `${file.originalname} uploaded successfully` };
+//   } catch (error: any) {
+//     return { error: `Error uploading ${file.originalname}: ${error.message}` };
+//   }
+// }

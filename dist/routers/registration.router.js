@@ -7,7 +7,6 @@ const express_1 = require("express");
 const registration_controller_1 = __importDefault(require("../controller/registration.controller"));
 const router = (0, express_1.Router)();
 const registrationController = new registration_controller_1.default();
-router.post("/register", registrationController.registerCompany);
-router.post("/signin", registrationController.companySignin);
-router.post("/signout", registrationController.companySignout);
+router.post("/register", registrationController.register);
 exports.default = router;
+//# sourceMappingURL=registration.router.js.map

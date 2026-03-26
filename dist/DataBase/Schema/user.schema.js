@@ -3,71 +3,112 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.USER_ROLES = void 0;
+// src/models/user.schema.ts
 const mongoose_1 = __importDefault(require("mongoose"));
+const bcrypt_1 = __importDefault(require("bcrypt"));
+exports.USER_ROLES = {
+    SUPER_ADMIN: 'superAdmin',
+    ADMIN: 'admin',
+    USER: 'user'
+};
+// ✅ STEP 4: Create schema with proper typing
 const userSchema = new mongoose_1.default.Schema({
     name: {
         type: String,
+        required: [true, 'Name is required'],
         trim: true,
-        required: [true, "Name is required"],
-        validate: {
-            validator: function (v) {
-                return v.trim().length > 0;
-            },
-            message: "Name should not be empty"
-        }
+        minlength: [2, 'Name must be at least 2 characters']
     },
     email: {
         type: String,
-        trim: true,
         lowercase: true,
-        match: [/^\S+@\S+\.\S+$/, "Invalid email format"]
+        trim: true,
+        match: [/^\S+@\S+\.\S+$/, 'Invalid email format']
     },
     phone: {
         type: String,
-        required: [true, "Phone Number is required"],
+        required: [true, 'Phone is required'],
         unique: true,
-        match: [/^\d{10,14}$/, "Phone number must be between 10 to 14 digits"]
+        match: [/^\d{10,14}$/, 'Phone must be 10-14 digits']
     },
     password: {
         type: String,
-        required: [true, "Password is required"],
-        minlength: [5, "Password must be at least 5 characters long"]
+        required: [true, 'Password is required'],
+        minlength: [8, 'Password must be at least 8 characters'],
+        select: false
     },
     company: {
         type: mongoose_1.default.Schema.Types.ObjectId,
-        ref: 'Registration'
+        ref: 'Company',
+        validate: {
+            validator: function () {
+                return this.userRole === exports.USER_ROLES.SUPER_ADMIN || !!this.company;
+            },
+            message: 'Company is required for non-SuperAdmin users'
+        }
     },
     userRole: {
         type: String,
-        enum: ["staff", "teamLeader", "developer", "admin"],
-        default: "staff",
+        enum: Object.values(exports.USER_ROLES),
+        default: exports.USER_ROLES.USER,
         required: true
     },
-    lastLogin: {
-        type: String
-    },
-    otp: {
-        type: String
-    },
-    otpExpires: {
-        type: Date
-    },
-    isDelete: {
-        type: Boolean,
-        default: false
-    },
-    refreshToken: {
-        type: String,
-        default: () => new mongoose_1.default.Types.ObjectId().toString(),
-    }
+    isVerified: { type: Boolean, default: false },
+    isLocked: { type: Boolean, default: false },
+    loginAttempts: { type: Number, default: 0 },
+    lastLogin: Date,
+    resetToken: String,
+    resetTokenExpiry: Date,
+    isDeleted: { type: Boolean, default: false }
 }, {
     timestamps: true
 });
-// Optional: hash password before save (you can enable if needed)
-// userSchema.pre('save', async function (next) {
-//   if (!this.isModified('password')) return next();
-//   this.password = await bcrypt.hash(this.password, 10);
-//   next();
-// });
+// ✅ STEP 5: Define methods using proper TypeScript syntax
+userSchema.methods.comparePassword = async function (candidate) {
+    try {
+        return await bcrypt_1.default.compare(candidate, this.password);
+    }
+    catch (error) {
+        console.error('Password comparison error:', error);
+        return false;
+    }
+};
+// ✅ STEP 6: Pre-save hook for password hashing
+userSchema.pre('save', async function (next) {
+    if (!this.isModified('password'))
+        return next();
+    if (this.password?.startsWith('$2b$'))
+        return next();
+    try {
+        this.password = await bcrypt_1.default.hash(this.password, 12);
+        next();
+    }
+    catch (error) {
+        next(error);
+    }
+});
+// ✅ STEP 7: Prevent deleting last SuperAdmin
+userSchema.pre('findOneAndUpdate', async function (next) {
+    const update = this.getUpdate();
+    if (!update || typeof update !== 'object') {
+        return next();
+    }
+    const setUpdate = update.$set;
+    if (!setUpdate)
+        return next();
+    if (setUpdate.userRole === exports.USER_ROLES.SUPER_ADMIN && setUpdate.isDeleted) {
+        const superAdminCount = await this.model.countDocuments({
+            userRole: exports.USER_ROLES.SUPER_ADMIN,
+            isDeleted: false
+        });
+        if (superAdminCount <= 1) {
+            return next(new Error('Cannot delete the last SuperAdmin account'));
+        }
+    }
+    next();
+});
+// ✅ STEP 8: Create and export model with proper types
 const User = mongoose_1.default.model('User', userSchema);
 exports.default = User;
+//# sourceMappingURL=user.schema.js.map

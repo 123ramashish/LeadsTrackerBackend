@@ -4,55 +4,47 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const mongoose_1 = __importDefault(require("mongoose"));
-const userTypes = [
-    "user",
-    "family",
-    "college",
-    "university",
-    "school",
-    "institute",
-    "company",
-    "other"
+const companyTypes = [
+    "family", "college", "university", "school",
+    "institute", "company", "other"
 ];
-const registrationSchema = new mongoose_1.default.Schema({
-    userType: {
+const companySchema = new mongoose_1.default.Schema({
+    type: {
         type: String,
-        required: [true, 'User type is required'],
-        enum: {
-            values: userTypes,
-            message: `Invalid user type. Valid types are: ${userTypes.join(', ')}`
-        }
+        enum: companyTypes,
+        required: [true, 'Company type is required'],
+        lowercase: true
     },
     name: {
         type: String,
-        required: [true, 'Name is required']
+        required: [true, 'Company name is required'],
+        trim: true,
+        minlength: [2, 'Name must be at least 2 characters']
     },
-    phone: {
+    contactEmail: {
         type: String,
-        required: [true, 'Phone number is required'],
-        validate: {
-            validator: function (v) {
-                return /^\d{10,14}$/.test(v);
-            },
-            message: (props) => `${props.value} is not a valid phone number! Must be 10-14 digits`
-        }
+        lowercase: true,
+        trim: true,
+        match: [/^\S+@\S+\.\S+$/, 'Invalid email format']
     },
-    email: {
+    contactPhone: {
         type: String,
-        validate: {
-            validator: function (v) {
-                return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
-            },
-            message: (props) => `${props.value} is not a valid email address!`
-        }
+        required: [true, 'Contact phone is required'],
+        match: [/^\+?[0-9\s-]{10,16}$/, 'Invalid phone number format']
     },
-    password: {
-        type: String,
-        required: [true, 'Password is required'],
-        minlength: [6, 'Password must be at least 6 characters long']
-    }
+    isActive: {
+        type: Boolean,
+        default: true
+    },
+    // Optional fields for future lead tracking
+    industry: String,
+    website: String,
+    address: String
 }, {
-    timestamps: true,
+    timestamps: true
 });
-const Registration = mongoose_1.default.model('Registration', registrationSchema);
-exports.default = Registration;
+// Compound index for uniqueness
+companySchema.index({ name: 1, contactPhone: 1 }, { unique: true });
+const Company = mongoose_1.default.model('Company', companySchema);
+exports.default = Company;
+//# sourceMappingURL=registration.schema.js.map

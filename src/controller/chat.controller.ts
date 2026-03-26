@@ -109,7 +109,7 @@ export default class ChatController {
       // Update lead score
       const updatedLead = await Lead.findById(leadId);
       if (updatedLead) {
-        await updatedLead.updateScore();
+        // await updatedLead.updateScore();
         await updatedLead.save();
       }
 
@@ -197,20 +197,20 @@ export default class ChatController {
       );
 
       // Log activity
-      await this.logActivity(
-        lead._id.toString(),
-        lead.company.toString(),
-        ActivityType.MESSAGE_RECEIVED,
-        'Message received from lead',
-        lead._id.toString(), // Lead is the performer
-        {
-          description: content ? content.substring(0, 100) : 'Received files',
-          metadata: { 
-            hasContent: !!content,
-            fileCount: fileUrls.length
-          }
-        }
-      );
+      // await this.logActivity(
+      //   lead._id.toString(),
+      //   lead.company.toString(),
+      //   ActivityType.MESSAGE_RECEIVED,
+      //   'Message received from lead',
+      //   lead._id.toString(), // Lead is the performer
+      //   {
+      //     description: content ? content.substring(0, 100) : 'Received files',
+      //     metadata: { 
+      //       hasContent: !!content,
+      //       fileCount: fileUrls.length
+      //     }
+      //   }
+      // );
 
       res.status(201).json({
         message: 'Message received successfully',

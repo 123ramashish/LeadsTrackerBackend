@@ -5,20 +5,16 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const auth_middleware_1 = require("../middlewares/auth.middleware");
+const user_schema_1 = require("../DataBase/Schema/user.schema");
 const user_controller_1 = __importDefault(require("../controller/user.controller"));
-const userRouter = (0, express_1.Router)();
-// Create user (admin only)
-userRouter.post("/create", auth_middleware_1.authenticate, (0, auth_middleware_1.authorizeRoles)(["admin", "teamLeader"]), user_controller_1.default.createUser);
-// Get all users (admin and team leaders)
-userRouter.get("/", auth_middleware_1.authenticate, user_controller_1.default.getUsers);
-// Get single user
-userRouter.get("/:id", auth_middleware_1.authenticate, user_controller_1.default.getUserById);
-// Update user
-userRouter.put("/:id", auth_middleware_1.authenticate, user_controller_1.default.updateUser);
-// Delete user (admin only)
-userRouter.delete("/:id", auth_middleware_1.authenticate, (0, auth_middleware_1.authorizeRoles)(["admin"]), user_controller_1.default.deleteUser);
-// Update password
-userRouter.put("/:id/password", auth_middleware_1.authenticate, user_controller_1.default.updatePassword);
-// verify auth during login
-userRouter.get('/auth/verify', auth_middleware_1.authenticate, (req, res) => { res.status(200).json({ message: "Valid Token" }); });
-exports.default = userRouter;
+const router = (0, express_1.Router)();
+const userController = new user_controller_1.default();
+// Current user operations
+router.get('/me', auth_middleware_1.authenticate, userController.getProfile.bind(userController));
+router.put('/me/password', auth_middleware_1.authenticate, userController.updateOwnPassword.bind(userController));
+// Admin/SuperAdmin operations
+router.post('/', auth_middleware_1.authenticate, (0, auth_middleware_1.authorizeRoles)([user_schema_1.USER_ROLES.SUPER_ADMIN, user_schema_1.USER_ROLES.ADMIN]), userController.createUser.bind(userController));
+router.get('/', auth_middleware_1.authenticate, (0, auth_middleware_1.authorizeRoles)([user_schema_1.USER_ROLES.SUPER_ADMIN, user_schema_1.USER_ROLES.ADMIN]), userController.getUsers.bind(userController));
+router.delete('/:id', auth_middleware_1.authenticate, (0, auth_middleware_1.authorizeRoles)([user_schema_1.USER_ROLES.SUPER_ADMIN, user_schema_1.USER_ROLES.ADMIN]), userController.deleteUser.bind(userController));
+exports.default = router;
+//# sourceMappingURL=user.router.js.map

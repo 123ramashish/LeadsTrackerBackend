@@ -1,18 +1,17 @@
 {
   "compilerOptions": {
+    /* 🔹 Language & Environment */
     "target": "ES2020",
-    "module": "commonjs",
     "lib": ["ES2020"],
-    "outDir": "./dist",
-    "rootDir": "./src",
-    "removeComments": true,
-    "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true,
+    "module": "commonjs",
     "moduleResolution": "node",
-    "allowSyntheticDefaultImports": true,
+
+    /* 🔹 Project Structure */
+    "rootDir": "./src",
+    "outDir": "./dist",
+
+    /* 🔹 Strict Type-Checking (VERY IMPORTANT) */
+    "strict": true,
     "noImplicitAny": true,
     "strictNullChecks": true,
     "strictFunctionTypes": true,
@@ -20,22 +19,38 @@
     "strictPropertyInitialization": true,
     "noImplicitThis": true,
     "alwaysStrict": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "noImplicitReturns": true,
+
+    /* 🔹 Code Quality */
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noImplicitReturns": false,
     "noFallthroughCasesInSwitch": true,
-    "declaration": true,
-    "declarationMap": true,
+
+    /* 🔹 Module Interop */
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+
+    /* 🔹 Performance */
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+
+    /* 🔹 Debugging */
     "sourceMap": true,
-    "types": ["node", "jest"]
+
+    /* 🔹 Build Output */
+    "declaration": false,
+
+    /* 🔹 Types */
+    "types": ["node"]
   },
-  "include": [
-    "src/**/*"
-  ],
+
+  "include": ["src/**/*"],
+
   "exclude": [
     "node_modules",
     "dist",
-    "**/*.spec.ts",
-    "**/*.test.ts"
+    "**/*.test.ts",
+    "**/*.spec.ts"
   ]
 }

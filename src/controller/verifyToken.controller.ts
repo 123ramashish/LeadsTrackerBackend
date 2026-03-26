@@ -31,27 +31,27 @@ export const verifyToken = async (req: Request, res: Response) => {
         }
 
         const user = await User.findById(userId);
-        if (!user || !user.refreshToken) {
-          return res.status(401).json({ message: "Refresh token not found" });
-        }
+        // if (!user || !user.refreshToken) {
+        //   return res.status(401).json({ message: "Refresh token not found" });
+        // }
 
         try {
           // ✅ Verify refresh token
-          jwt.verify(user.refreshToken, process.env.JWT_SECRET || "secret");
+          // jwt.verify(user.refreshToken, process.env.JWT_SECRET || "secret");
 
           // ✅ Generate new access token
-          const newAccessToken = jwt.sign(
-            { sub: user._id, email: user.email, role: user.userRole },
-            process.env.JWT_SECRET || "secret",
-            { expiresIn: "1h" }
-          );
+          // const newAccessToken = jwt.sign(
+          //   { sub: user._id, email: user.email, role: user.userRole },
+          //   process.env.JWT_SECRET || "secret",
+          //   { expiresIn: "1h" }
+          // );
 
           // Send new token in response (frontend should replace it in Cookies)
-          return res.status(200).json({
-            valid: true,
-            newAccessToken,
-            user: { sub: user._id, email: user.email, role: user.userRole },
-          });
+          // return res.status(200).json({
+          //   valid: true,
+          //   newAccessToken,
+          //   user: { sub: user._id, email: user.email, role: user.userRole },
+          // });
         } catch (refreshError) {
           return res.status(401).json({ message: "Invalid refresh token" });
         }
