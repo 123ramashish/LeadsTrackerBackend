@@ -15,7 +15,7 @@ export default class AuthController {
         ? { phone: identifier, isDeleted: false }
         : { email: identifier, isDeleted: false };
       
-      const user = await User.findOne(query).select('+password');
+      const user = await User.findOne(query).select('+password').populate('company', 'name');
       if (!user) {
         return res.status(401).json({ message: 'Invalid credentials' });
       }
@@ -56,7 +56,7 @@ export default class AuthController {
         companyId: user.company?._id,
         companyName: (user.company as any)?.name || null
       };
-      
+      console.log(`User ${user.email || user.phone} logged in successfully`, userPayload,user);
       res.status(200).json({
         message: 'Login successful',
         user: userPayload,
@@ -163,7 +163,7 @@ export default class AuthController {
           await sendOTPSMS(user.phone, otp, 'Password Reset');
         }
       }
-      
+      console.log(`OTP generated for ${identifier} (for ${forPasswordReset ? 'password reset' : 'phone login'})`);
       res.json({ 
         message: 'OTP sent successfully', 
         // ⚠️ Only for development! Remove in production
