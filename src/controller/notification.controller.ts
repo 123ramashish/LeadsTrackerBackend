@@ -115,7 +115,7 @@ export default class NotificationController {
   static async getNotificationById(req: AuthRequest, res: Response): Promise<Response> {
     try {
       const user = req.user;
-      const { id } = req.params;
+      const { id } = req.params as any;
 
       if (!user) {
         return res.status(401).json({ message: "Unauthorized" });
@@ -189,7 +189,7 @@ export default class NotificationController {
   static async archiveNotification(req: AuthRequest, res: Response): Promise<Response> {
     try {
       const user = req.user;
-      const { id } = req.params;
+      const { id } = req.params as any;
 
       if (!user) {
         return res.status(401).json({ message: "Unauthorized" });
@@ -229,7 +229,7 @@ export default class NotificationController {
   static async deleteNotification(req: AuthRequest, res: Response): Promise<Response> {
     try {
       const user = req.user;
-      const { id } = req.params;
+      const { id } = req.params as any;
 
       if (!user) {
         return res.status(401).json({ message: "Unauthorized" });
@@ -259,7 +259,7 @@ export default class NotificationController {
   static async updateNotification(req: AuthRequest, res: Response): Promise<Response> {
     try {
       const user = req.user;
-      const { id } = req.params;
+      const { id } = req.params as any;
       const updateData = req.body;
 
       if (!user) {

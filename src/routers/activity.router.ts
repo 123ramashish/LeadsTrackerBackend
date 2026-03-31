@@ -2,9 +2,9 @@ import { Router } from 'express';
 import { Request, Response } from 'express';
 import mongoose from 'mongoose';
 import { authenticate, authorizeRoles } from '../middlewares/auth.middleware';
-import { USER_ROLES } from '../controller/lead.controller';
-import Activity, { ActivityType } from '../DataBase/Schema/Activity.schema';
-import Lead from '../DataBase/Schema/Leads.schema';
+import Activity, { ActivityType } from '../DataBase/Schema/leads/Activity.schema';
+import Lead from '../DataBase/Schema/leads/Leads.schema';
+import { USER_ROLES } from '../types';
 
 const router = Router();
 
@@ -19,7 +19,7 @@ interface AuthRequest extends Request {
 // GET ACTIVITY TIMELINE FOR A SPECIFIC LEAD
 router.get('/lead/:leadId', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const { leadId } = req.params;
+    const { leadId } = req.params as any;
     const { limit = 50, page = 1, type } = req.query;
     const currentUser = req.user!;
 
@@ -130,7 +130,7 @@ router.get('/recent', authenticate, async (req: AuthRequest, res: Response) => {
 router.get(
   '/statistics',
   authenticate,
-  authorizeRoles([USER_ROLES.ADMIN, USER_ROLES.SUPER_ADMIN]),
+  authorizeRoles([USER_ROLES.ADMIN]),
   async (req: AuthRequest, res: Response) => {
     try {
       const { dateFrom, dateTo } = req.query;
@@ -227,7 +227,7 @@ router.get(
 // GET ACTIVITY SUMMARY FOR A USER
 router.get('/user/:userId/summary', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const { userId } = req.params;
+    const { userId } = req.params as any;
     const { dateFrom, dateTo } = req.query;
     const currentUser = req.user!;
 

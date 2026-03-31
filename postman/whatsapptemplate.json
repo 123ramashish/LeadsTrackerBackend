@@ -1,0 +1,402 @@
+{
+  "info": {
+    "name": "WhatsApp Template Config API",
+    "description": "Full CRUD for WhatsApp template categories and templates. Set {{baseUrl}}, {{token}}, {{companyId}}, {{categoryId}}, {{templateId}} as Postman variables.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl",     "value": "http://localhost:5000/api",        "type": "string" },
+    { "key": "token",       "value": "Bearer <your_jwt_token_here>",     "type": "string" },
+    { "key": "companyId",   "value": "664f1a2b3c4d5e6f78901234",         "type": "string" },
+    { "key": "categoryId",  "value": "664f1a2b3c4d5e6f78905678",         "type": "string" },
+    { "key": "templateId",  "value": "664f1a2b3c4d5e6f78909abc",         "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "1. Config",
+      "item": [
+        {
+          "name": "GET  – Fetch full config (auto-seeds defaults)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "{{token}}" }
+            ],
+            "url": {
+              "raw":  "{{baseUrl}}/whatsapp-templates",
+              "host": ["{{baseUrl}}"],
+              "path": ["whatsapp-templates"]
+            }
+          }
+        },
+        {
+          "name": "GET  – Fetch config (SuperAdmin override companyId)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "{{token}}" }
+            ],
+            "url": {
+              "raw":   "{{baseUrl}}/whatsapp-templates?companyId={{companyId}}",
+              "host":  ["{{baseUrl}}"],
+              "path":  ["whatsapp-templates"],
+              "query": [{ "key": "companyId", "value": "{{companyId}}" }]
+            }
+          }
+        },
+        {
+          "name": "DELETE – Soft-delete entire config (SuperAdmin only)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "{{token}}" }
+            ],
+            "url": {
+              "raw":  "{{baseUrl}}/whatsapp-templates",
+              "host": ["{{baseUrl}}"],
+              "path": ["whatsapp-templates"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Categories",
+      "item": [
+        {
+          "name": "POST – Add category",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization",  "value": "{{token}}" },
+              { "key": "Content-Type",   "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"FOLLOWUP\",\n  \"label\": \"Follow-up\",\n  \"emoji\": \"🔁\",\n  \"order\": 4\n}"
+            },
+            "url": {
+              "raw":  "{{baseUrl}}/whatsapp-templates/categories",
+              "host": ["{{baseUrl}}"],
+              "path": ["whatsapp-templates", "categories"]
+            }
+          }
+        },
+        {
+          "name": "POST – Add category (duplicate key → 409)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization",  "value": "{{token}}" },
+              { "key": "Content-Type",   "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"BOOKING\",\n  \"label\": \"Booking Again\"\n}"
+            },
+            "url": {
+              "raw":  "{{baseUrl}}/whatsapp-templates/categories",
+              "host": ["{{baseUrl}}"],
+              "path": ["whatsapp-templates", "categories"]
+            }
+          }
+        },
+        {
+          "name": "PATCH – Update category",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization",  "value": "{{token}}" },
+              { "key": "Content-Type",   "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"label\": \"Follow-up Messages\",\n  \"emoji\": \"🔄\",\n  \"order\": 5,\n  \"isActive\": true\n}"
+            },
+            "url": {
+              "raw":  "{{baseUrl}}/whatsapp-templates/categories/{{categoryId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["whatsapp-templates", "categories", "{{categoryId}}"]
+            }
+          }
+        },
+        {
+          "name": "PATCH – Update category key",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization",  "value": "{{token}}" },
+              { "key": "Content-Type",   "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"FOLLOWUP_V2\"\n}"
+            },
+            "url": {
+              "raw":  "{{baseUrl}}/whatsapp-templates/categories/{{categoryId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["whatsapp-templates", "categories", "{{categoryId}}"]
+            }
+          }
+        },
+        {
+          "name": "PATCH – Reorder categories",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization",  "value": "{{token}}" },
+              { "key": "Content-Type",   "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orders\": [\n    { \"id\": \"664f1a2b3c4d5e6f78905678\", \"order\": 0 },\n    { \"id\": \"664f1a2b3c4d5e6f78905679\", \"order\": 1 },\n    { \"id\": \"664f1a2b3c4d5e6f78905680\", \"order\": 2 }\n  ]\n}"
+            },
+            "url": {
+              "raw":  "{{baseUrl}}/whatsapp-templates/categories/reorder",
+              "host": ["{{baseUrl}}"],
+              "path": ["whatsapp-templates", "categories", "reorder"]
+            }
+          }
+        },
+        {
+          "name": "DELETE – Delete category",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "{{token}}" }
+            ],
+            "url": {
+              "raw":  "{{baseUrl}}/whatsapp-templates/categories/{{categoryId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["whatsapp-templates", "categories", "{{categoryId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Templates",
+      "item": [
+        {
+          "name": "POST – Add template",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization",  "value": "{{token}}" },
+              { "key": "Content-Type",   "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"FOLLOWUP_1WEEK\",\n  \"desc\": \"Sent one week after the last session\",\n  \"tpl\": \"Hi {name}, it's been a week since your visit to *{clinicName}*. How are you feeling? Reply *BOOK* to schedule your next session. 💪\"\n}"
+            },
+            "url": {
+              "raw":  "{{baseUrl}}/whatsapp-templates/categories/{{categoryId}}/templates",
+              "host": ["{{baseUrl}}"],
+              "path": ["whatsapp-templates", "categories", "{{categoryId}}", "templates"]
+            }
+          }
+        },
+        {
+          "name": "POST – Add template (no variables)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization",  "value": "{{token}}" },
+              { "key": "Content-Type",   "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"GENERIC_THANKS\",\n  \"desc\": \"Generic thank-you with no personalisation\",\n  \"tpl\": \"Thank you for visiting us! We look forward to supporting your recovery. 🙏\"\n}"
+            },
+            "url": {
+              "raw":  "{{baseUrl}}/whatsapp-templates/categories/{{categoryId}}/templates",
+              "host": ["{{baseUrl}}"],
+              "path": ["whatsapp-templates", "categories", "{{categoryId}}", "templates"]
+            }
+          }
+        },
+        {
+          "name": "POST – Add template (duplicate key → 409)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization",  "value": "{{token}}" },
+              { "key": "Content-Type",   "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"WELCOME\",\n  \"tpl\": \"Duplicate welcome message\"\n}"
+            },
+            "url": {
+              "raw":  "{{baseUrl}}/whatsapp-templates/categories/{{categoryId}}/templates",
+              "host": ["{{baseUrl}}"],
+              "path": ["whatsapp-templates", "categories", "{{categoryId}}", "templates"]
+            }
+          }
+        },
+        {
+          "name": "PATCH – Update template body + vars auto-refresh",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization",  "value": "{{token}}" },
+              { "key": "Content-Type",   "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tpl\": \"Hi {name}, your session at *{clinicName}* on {date} is confirmed! 📅\",\n  \"desc\": \"Updated confirmation with date\"\n}"
+            },
+            "url": {
+              "raw":  "{{baseUrl}}/whatsapp-templates/categories/{{categoryId}}/templates/{{templateId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["whatsapp-templates", "categories", "{{categoryId}}", "templates", "{{templateId}}"]
+            }
+          }
+        },
+        {
+          "name": "PATCH – Deactivate template",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization",  "value": "{{token}}" },
+              { "key": "Content-Type",   "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isActive\": false\n}"
+            },
+            "url": {
+              "raw":  "{{baseUrl}}/whatsapp-templates/categories/{{categoryId}}/templates/{{templateId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["whatsapp-templates", "categories", "{{categoryId}}", "templates", "{{templateId}}"]
+            }
+          }
+        },
+        {
+          "name": "PATCH – Update template key",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization",  "value": "{{token}}" },
+              { "key": "Content-Type",   "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"WELCOME_V2\"\n}"
+            },
+            "url": {
+              "raw":  "{{baseUrl}}/whatsapp-templates/categories/{{categoryId}}/templates/{{templateId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["whatsapp-templates", "categories", "{{categoryId}}", "templates", "{{templateId}}"]
+            }
+          }
+        },
+        {
+          "name": "POST – Duplicate template",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "{{token}}" }
+            ],
+            "url": {
+              "raw":  "{{baseUrl}}/whatsapp-templates/categories/{{categoryId}}/templates/{{templateId}}/duplicate",
+              "host": ["{{baseUrl}}"],
+              "path": ["whatsapp-templates", "categories", "{{categoryId}}", "templates", "{{templateId}}", "duplicate"]
+            }
+          }
+        },
+        {
+          "name": "DELETE – Delete template",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "{{token}}" }
+            ],
+            "url": {
+              "raw":  "{{baseUrl}}/whatsapp-templates/categories/{{categoryId}}/templates/{{templateId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["whatsapp-templates", "categories", "{{categoryId}}", "templates", "{{templateId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Edge Cases",
+      "item": [
+        {
+          "name": "GET – Invalid companyId → 400",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "{{token}}" }
+            ],
+            "url": {
+              "raw":   "{{baseUrl}}/whatsapp-templates?companyId=not-an-objectid",
+              "host":  ["{{baseUrl}}"],
+              "path":  ["whatsapp-templates"],
+              "query": [{ "key": "companyId", "value": "not-an-objectid" }]
+            }
+          }
+        },
+        {
+          "name": "POST – Add category with spaces in key → 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization",  "value": "{{token}}" },
+              { "key": "Content-Type",   "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"invalid key\",\n  \"label\": \"Bad Key\"\n}"
+            },
+            "url": {
+              "raw":  "{{baseUrl}}/whatsapp-templates/categories",
+              "host": ["{{baseUrl}}"],
+              "path": ["whatsapp-templates", "categories"]
+            }
+          }
+        },
+        {
+          "name": "PATCH – Update category with no fields → 400",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization",  "value": "{{token}}" },
+              { "key": "Content-Type",   "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": {
+              "raw":  "{{baseUrl}}/whatsapp-templates/categories/{{categoryId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["whatsapp-templates", "categories", "{{categoryId}}"]
+            }
+          }
+        },
+        {
+          "name": "POST – Add template over 4096 chars → 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization",  "value": "{{token}}" },
+              { "key": "Content-Type",   "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"TOO_LONG\",\n  \"tpl\": \"AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA AAAAAAAAAA\"\n}"
+            },
+            "url": {
+              "raw":  "{{baseUrl}}/whatsapp-templates/categories/{{categoryId}}/templates",
+              "host": ["{{baseUrl}}"],
+              "path": ["whatsapp-templates", "categories", "{{categoryId}}", "templates"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

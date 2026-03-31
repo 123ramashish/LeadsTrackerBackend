@@ -1,1113 +1,1202 @@
-import { Request, Response } from 'express';
-import mongoose from 'mongoose';
-import Lead, { ILead, LeadStatus, LeadType, LeadSource, LeadPriority } from '../DataBase/Schema/Leads.schema';
-import Activity, { ActivityType } from '../DataBase/Schema/Activity.schema';
-import Company from '../DataBase/Schema/registration.schema';
+// src/controllers/leadController.ts
+import { Request, Response, NextFunction } from 'express';
+import mongoose, { Types } from 'mongoose';
 
-// User roles enum (import from your user schema)
-export enum USER_ROLES {
+import { ActivityType, LeadPriority, LeadSource, LeadStatus, LeadType, type ApiResponse } from '../types/index';
+import Activity from '../DataBase/Schema/leads/Activity.schema';
+import { AppError } from '../middlewares/errorHandler';
+import Company from '../DataBase/Schema/company.schema';
+import Lead from '../DataBase/Schema/leads/Leads.schema';
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+export enum UserRole {
   SUPER_ADMIN = 'super_admin',
-  ADMIN = 'admin',
-  USER = 'user',
-  EMPLOYEE = 'employee'
+  ADMIN       = 'admin',
+  USER        = 'user',
+  EMPLOYEE    = 'employee',
 }
 
-interface AuthRequest extends Request {
-  user?: {
-    id: string;
-    role: USER_ROLES;
-    companyId: string;
-  };
+interface AuthUser {
+  id: string;
+  role: UserRole;
+  companyId: string;
 }
 
-export default class LeadController {
-  // 🔒 COMPANY ISOLATION HELPER
-  private buildCompanyQuery(currentUser: any, additionalFilters: any = {}) {
-    const query: any = { isDeleted: false, ...additionalFilters };
-    
-    if (currentUser.role !== USER_ROLES.SUPER_ADMIN) {
-      query.company = new mongoose.Types.ObjectId(currentUser.companyId);
-    }
-    return query;
+export interface AuthRequest extends Request {
+  user?: AuthUser;
+}
+
+// Valid sort fields — used to whitelist the sortBy query param
+const VALID_SORT_FIELDS = [
+  'createdAt', 'updatedAt', 'name', 'score',
+  'priority', 'nextFollowUp', 'lastContacted', 'estimatedValue',
+] as const;
+
+type SortField = typeof VALID_SORT_FIELDS[number];
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const companyScope = (user: AuthUser, extra: Record<string, unknown> = {}) => {
+  const base: Record<string, unknown> = { isDeleted: false, ...extra };
+  // if (user.role !== UserRole.SUPER_ADMIN) {
+  //   base.company = new Types.ObjectId(user.companyId);
+  // }
+  return base;
+};
+
+const logActivity = async (
+  leadId: string,
+  companyId: string,
+  performedBy: string,
+  type: ActivityType,
+  title: string,
+  opts: {
+    description?: string;
+    previousValue?: unknown;
+    newValue?: unknown;
+    metadata?: unknown;
+  } = {}
+): Promise<void> => {
+  try {
+    await Activity.create({
+      leadId:      new Types.ObjectId(leadId),
+      companyId:   new Types.ObjectId(companyId),
+      performedBy: new Types.ObjectId(performedBy),
+      type,
+      title,
+      activityDate: new Date(),
+      ...opts,
+    });
+  } catch (err) {
+    console.error('[Activity Log Error]', err);
   }
+};
 
-  // 📝 LOG ACTIVITY HELPER
-  private async logActivity(
-    leadId: string,
-    companyId: string,
-    type: ActivityType,
-    title: string,
-    performedBy: string,
-    options: {
-      description?: string;
-      previousValue?: any;
-      newValue?: any;
-      metadata?: any;
-    } = {}
-  ) {
-    try {
-      await Activity.create({
-        leadId: new mongoose.Types.ObjectId(leadId),
-        companyId: new mongoose.Types.ObjectId(companyId),
-        type,
-        title,
-        performedBy: new mongoose.Types.ObjectId(performedBy),
-        description: options.description,
-        previousValue: options.previousValue,
-        newValue: options.newValue,
-        metadata: options.metadata,
-        activityDate: new Date()
-      });
-    } catch (error) {
-      console.error('Activity logging error:', error);
-      // Don't throw - activity logging should not break main flow
-    }
+const toObjectId = (value: string, fieldName = 'ID'): Types.ObjectId => {
+  if (!mongoose.Types.ObjectId.isValid(value)) {
+    throw new AppError(`Invalid ${fieldName}`, 400);
   }
+  return new Types.ObjectId(value);
+};
 
-  // ➕ CREATE LEAD
-  async createLead(req: AuthRequest, res: Response) {
-    try {
-      const { 
-        name, email, phone, website, address, googleMapUrl, whatsapp,
-        status = LeadStatus.CREATED, 
-        type = LeadType.LEAD,
-        source = LeadSource.OTHER,
-        priority = LeadPriority.MEDIUM,
-        isFavorite = false,
-        estimatedValue,
-        tags = [],
-        assignedTo,
-        nextFollowUp
-      } = req.body;
-      const currentUser = req.user!;
-
-      // Validate required fields
-      if (!name) {
-        return res.status(400).json({ message: 'Lead name is required' });
-      }
-
-      // Enforce company ownership
-      let companyId = currentUser.companyId;
-      if (currentUser.role === USER_ROLES.SUPER_ADMIN && req.body.company) {
-        const validCompany = await Company.findById(req.body.company);
-        if (!validCompany?.isActive) {
-          return res.status(400).json({ message: 'Invalid or inactive company' });
-        }
-        companyId = req.body.company;
-      }
-
-      // Validate enums
-      if (!Object.values(LeadStatus).includes(status)) {
-        return res.status(400).json({ message: 'Invalid lead status' });
-      }
-      if (!Object.values(LeadType).includes(type)) {
-        return res.status(400).json({ message: 'Invalid lead type' });
-      }
-      if (!Object.values(LeadSource).includes(source)) {
-        return res.status(400).json({ message: 'Invalid lead source' });
-      }
-      if (!Object.values(LeadPriority).includes(priority)) {
-        return res.status(400).json({ message: 'Invalid priority level' });
-      }
-
-      // Create lead
-      const newLead = await Lead.create({
-        name,
-        email: email?.toLowerCase(),
-        phone,
-        website,
-        address,
-        googleMapUrl,
-        whatsapp,
-        status,
-        type,
-        source,
-        priority,
-        isFavorite,
-        estimatedValue,
-        tags,
-        assignedTo: assignedTo ? new mongoose.Types.ObjectId(assignedTo) : undefined,
-        nextFollowUp: nextFollowUp ? new Date(nextFollowUp) : undefined,
-        company: new mongoose.Types.ObjectId(companyId),
-        createdBy: new mongoose.Types.ObjectId(currentUser.id),
-        statusUpdatedAt: new Date(),
-        lastActivityAt: new Date()
-      });
-
-      // Calculate initial score
-      // await newLead.updateScore();
-      await newLead.save();
-
-      // Log activity
-      // await this.logActivity(
-      //   newLead._id.toString(),
-      //   companyId,
-      //   ActivityType.LEAD_CREATED,
-      //   `Lead "${name}" created`,
-      //   currentUser.id,
-      //   {
-      //     description: `New ${type} from ${source}`,
-      //     metadata: { source, priority }
-      //   }
-      // );
-
-      res.status(201).json({
-        message: 'Lead created successfully',
-        lead: newLead
-      });
-    } catch (error: any) {
-      if (error.code === 11000) {
-        return res.status(409).json({ 
-          message: 'Lead with this email or phone already exists in your company' 
-        });
-      }
-      console.error('Lead creation error:', error);
-      res.status(500).json({ 
-        message: 'Failed to create lead',
-        error: process.env.NODE_ENV === 'development' ? error.message : undefined
-      });
-    }
+const assertEnum = <T extends string>(
+  value: unknown,
+  enumObj: Record<string, T>,
+  label: string
+): T => {
+  if (!value || !Object.values(enumObj).includes(value as T)) {
+    throw new AppError(`Invalid ${label}: "${value}"`, 400);
   }
+  return value as T;
+};
 
-  // 📋 GET LEADS WITH ADVANCED FILTERING & PAGINATION
-  async getLeads(req: AuthRequest, res: Response) {
-    try {
-      const { 
-        status, type, source, priority, isFavorite, 
-        assignedTo, tags, search,
-        minScore, maxScore,
-        minValue, maxValue,
-        overdueFollowUp,
-        dateFrom, dateTo,
-        sortBy = 'createdAt',
-        sortOrder = 'desc',
-        page = 1, 
-        limit = 20 
-      } = req.query;
-      const currentUser = req.user!;
+// ─── CREATE LEAD ──────────────────────────────────────────────────────────────
 
-      // Build base query with company isolation
-      const query: any = this.buildCompanyQuery(currentUser);
-      
-      // Apply filters
-      if (status) query.status = status;
-      if (type) query.type = type;
-      if (source) query.source = source;
-      if (priority) query.priority = priority;
-      if (isFavorite !== undefined) query.isFavorite = isFavorite === 'true';
-      if (assignedTo) query.assignedTo = new mongoose.Types.ObjectId(assignedTo as string);
-      
-      // Tags filter
-      if (tags) {
-        const tagArray = Array.isArray(tags) ? tags : [tags];
-        query.tags = { $in: tagArray };
+export const createLead = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const user = req.user!;
+    const {
+      name, email, phone, whatsapp, website, address, googleMapUrl,
+      status    = LeadStatus.CREATED,
+      type      = LeadType.LEAD,
+      source    = LeadSource.OTHER,
+      priority  = LeadPriority.MEDIUM,
+      isFavorite = false,
+      estimatedValue, actualValue,
+      tags = [],
+      customFields,
+      assignedTo,
+      nextFollowUp,
+      companyName,
+    } = req.body as Record<string, unknown>;
+
+    if (!name) throw new AppError('Lead name is required', 400);
+
+    assertEnum(status,   LeadStatus,   'lead status');
+    assertEnum(type,     LeadType,     'lead type');
+    assertEnum(source,   LeadSource,   'lead source');
+    assertEnum(priority, LeadPriority, 'priority');
+console.log("user",user)
+    let companyId = user.companyId;
+    if (user.role === UserRole.SUPER_ADMIN && req.body.company) {
+      const targetCompany = await Company.findById(req.body.company);
+      if (!targetCompany || !(targetCompany as any).isActive) {
+        throw new AppError('Invalid or inactive company', 400);
       }
-
-      // Score range filter
-      if (minScore !== undefined || maxScore !== undefined) {
-        query.score = {};
-        if (minScore !== undefined) query.score.$gte = Number(minScore);
-        if (maxScore !== undefined) query.score.$lte = Number(maxScore);
-      }
-
-      // Value range filter
-      if (minValue !== undefined || maxValue !== undefined) {
-        query.estimatedValue = {};
-        if (minValue !== undefined) query.estimatedValue.$gte = Number(minValue);
-        if (maxValue !== undefined) query.estimatedValue.$lte = Number(maxValue);
-      }
-
-      // Overdue follow-ups
-      if (overdueFollowUp === 'true') {
-        query.nextFollowUp = { $lte: new Date() };
-        query.status = { $nin: [LeadStatus.WON, LeadStatus.LOST] };
-      }
-
-      // Date range filter
-      if (dateFrom || dateTo) {
-        query.createdAt = {};
-        if (dateFrom) query.createdAt.$gte = new Date(dateFrom as string);
-        if (dateTo) query.createdAt.$lte = new Date(dateTo as string);
-      }
-
-      // Search functionality
-      if (search) {
-        query.$or = [
-          { name: { $regex: search, $options: 'i' } },
-          { email: { $regex: search, $options: 'i' } },
-          { phone: { $regex: search, $options: 'i' } },
-          { website: { $regex: search, $options: 'i' } }
-        ];
-      }
-
-      // Pagination
-      const pageNum = Math.max(1, parseInt(page as string, 10));
-      const limitNum = Math.min(100, Math.max(1, parseInt(limit as string, 10)));
-      const skip = (pageNum - 1) * limitNum;
-
-      // Sorting
-      const sortOptions: any = {};
-      const validSortFields = ['createdAt', 'updatedAt', 'name', 'score', 'priority', 'nextFollowUp', 'lastContacted'];
-      if (validSortFields.includes(sortBy as string)) {
-        sortOptions[sortBy as string] = sortOrder === 'asc' ? 1 : -1;
-      } else {
-        sortOptions.createdAt = -1;
-      }
-
-      // Execute query
-      const [leads, total] = await Promise.all([
-        Lead.find(query)
-          .select('-isDeleted -__v')
-          .populate('company', 'name type')
-          .populate('assignedTo', 'name email')
-          .populate('createdBy', 'name email')
-          .sort(sortOptions)
-          .skip(skip)
-          .limit(limitNum)
-          .lean(),
-        Lead.countDocuments(query)
-      ]);
-
-      res.json({
-        leads,
-        pagination: {
-          total,
-          page: pageNum,
-          pages: Math.ceil(total / limitNum),
-          limit: limitNum
-        }
-      });
-    } catch (error: any) {
-      console.error('Lead fetch error:', error);
-      res.status(500).json({ 
-        message: 'Failed to fetch leads',
-        error: process.env.NODE_ENV === 'development' ? error.message : undefined 
-      });
+      companyId = String(req.body.company);
     }
+
+    const lead = await Lead.create({
+      name,
+      email:          email ? String(email).toLowerCase() : undefined,
+      phone,
+      whatsapp,
+      website,
+      address,
+      googleMapUrl,
+      status,
+      type,
+      source,
+      priority,
+      isFavorite,
+      estimatedValue,
+      actualValue,
+      tags,
+      customFields,
+      companyName,
+      company:     new Types.ObjectId(companyId),
+      createdBy:   new Types.ObjectId(user.id),
+      assignedTo:  assignedTo ? toObjectId(String(assignedTo), 'assignedTo') : undefined,
+      nextFollowUp: nextFollowUp ? new Date(String(nextFollowUp)) : undefined,
+      statusUpdatedAt: new Date(),
+      lastActivityAt:  new Date(),
+    });
+
+    lead.computeScore();
+    await lead.save();
+
+    await logActivity(lead.id, companyId, user.id, ActivityType.LEAD_CREATED, `Lead "${name}" created`, {
+      description: `New ${type} from ${source}`,
+      metadata:    { source, priority, type },
+    });
+
+    const response: ApiResponse = { success: true, data: lead };
+    res.status(201).json(response);
+  } catch (err: any) {
+    if (err.code === 11000) return next(new AppError('A lead with this email or phone already exists in your company', 409));
+    next(err);
   }
+};
 
-  // 🔍 GET SINGLE LEAD WITH ACTIVITY TIMELINE
-  async getLeadById(req: AuthRequest, res: Response) {
-    try {
-      const { id } = req.params;
-      const { includeTimeline = 'true' } = req.query;
-      const currentUser = req.user!;
+// ─── BULK CREATE LEADS (duplicate-safe) ───────────────────────────────────────
+//
+//  POST /leads/bulk
+//
+//  Accepts an array of lead objects. For each lead:
+//    - A duplicate is defined as a record in the same company with the same
+//      email OR the same phone (matching the unique sparse indexes).
+//    - Duplicates are silently skipped — NOT returned as errors.
+//
+//  Response shape:
+//  {
+//    success: true,
+//    data: {
+//      created:          Lead[],   // successfully inserted docs
+//      createdCount:     number,
+//      duplicateCount:   number,
+//      duplicates:       { index, field, value, existingId }[],  // detail per dup
+//      failedCount:      number,
+//      failed:           { index, error }[],   // non-duplicate errors
+//    }
+//  }
+//
+export const bulkCreateLeads = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const user = req.user!;
+    const leads: Record<string, unknown>[] = req.body.leads;
 
-      if (!mongoose.Types.ObjectId.isValid(id)) {
-        return res.status(400).json({ message: 'Invalid lead ID' });
-      }
-
-      const query = this.buildCompanyQuery(currentUser, { _id: id });
-      const lead = await Lead.findOne(query)
-        .populate('company', 'name type')
-        .populate('assignedTo', 'name email avatar')
-        .populate('createdBy', 'name email')
-        .populate('updatedBy', 'name email')
-        .lean();
-
-      if (!lead) {
-        return res.status(404).json({ message: 'Lead not found' });
-      }
-
-      // Include activity timeline if requested
-      let timeline = null;
-      if (includeTimeline === 'true') {
-        timeline = await Activity.find({ leadId: id })
-          .sort({ activityDate: -1 })
-          .limit(50)
-          .populate('performedBy', 'name email')
-          .populate('assignedTo', 'name email')
-          .lean();
-      }
-
-      res.json({
-        lead,
-        timeline
-      });
-    } catch (error: any) {
-      res.status(500).json({ 
-        message: 'Failed to fetch lead',
-        error: process.env.NODE_ENV === 'development' ? error.message : undefined 
-      });
+    // ── Validate top-level input ──────────────────────────────────────────
+    if (!Array.isArray(leads) || leads.length === 0) {
+      throw new AppError('leads must be a non-empty array', 400);
     }
-  }
-
-  // ✏️ UPDATE LEAD
-  async updateLead(req: AuthRequest, res: Response) {
-    try {
-      const { id } = req.params;
-      const updateFields = req.body;
-      const currentUser = req.user!;
-
-      if (!mongoose.Types.ObjectId.isValid(id)) {
-        return res.status(400).json({ message: 'Invalid lead ID' });
-      }
-
-      // Get current lead for change tracking
-      const query = this.buildCompanyQuery(currentUser, { _id: id });
-      const currentLead = await Lead.findOne(query);
-      
-      if (!currentLead) {
-        return res.status(404).json({ message: 'Lead not found' });
-      }
-
-      // Only allow specific field updates
-      const allowedFields = [
-        'name', 'email', 'phone', 'website', 'address', 
-        'googleMapUrl', 'whatsapp', 'estimatedValue', 'tags'
-      ];
-      
-      const sanitizedUpdates: any = {};
-      let changes: string[] = [];
-
-      for (const key of Object.keys(updateFields)) {
-        if (allowedFields.includes(key)) {
-          const newValue = key === 'email' ? updateFields[key]?.toLowerCase() : updateFields[key];
-          if (JSON.stringify(currentLead[key as keyof ILead]) !== JSON.stringify(newValue)) {
-            sanitizedUpdates[key] = newValue;
-            changes.push(key);
-          }
-        }
-      }
-
-      if (Object.keys(sanitizedUpdates).length === 0) {
-        return res.status(400).json({ message: 'No valid changes detected' });
-      }
-
-      // Update lead
-      sanitizedUpdates.updatedBy = new mongoose.Types.ObjectId(currentUser.id);
-      sanitizedUpdates.lastActivityAt = new Date();
-
-      const updatedLead = await Lead.findOneAndUpdate(
-        query,
-        { $set: sanitizedUpdates },
-        { new: true, runValidators: true }
-      ).lean();
-
-      // Log activity
-      await this.logActivity(
-        id,
-        currentUser.companyId,
-        ActivityType.LEAD_UPDATED,
-        'Lead information updated',
-        currentUser.id,
-        {
-          description: `Updated fields: ${changes.join(', ')}`,
-          metadata: { fields: changes }
-        }
-      );
-
-      res.json({ 
-        message: 'Lead updated successfully', 
-        lead: updatedLead 
-      });
-    } catch (error: any) {
-      if (error.code === 11000) {
-        return res.status(409).json({ 
-          message: 'Lead with this email or phone already exists' 
-        });
-      }
-      console.error('Lead update error:', error);
-      res.status(500).json({ 
-        message: 'Failed to update lead',
-        error: process.env.NODE_ENV === 'development' ? error.message : undefined 
-      });
+    if (leads.length > 500) {
+      throw new AppError('Maximum 500 leads per bulk request', 400);
     }
-  }
 
-  // 🚦 UPDATE STATUS
-  async updateLeadStatus(req: AuthRequest, res: Response) {
-    try {
-      const { id } = req.params;
-      const { status, notes } = req.body;
-      const currentUser = req.user!;
-
-      if (!status || !Object.values(LeadStatus).includes(status)) {
-        return res.status(400).json({ message: 'Invalid status value' });
+    // ── Resolve companyId ─────────────────────────────────────────────────
+    let companyId = user.companyId;
+    if (user.role === UserRole.SUPER_ADMIN && req.body.company) {
+      const targetCompany = await Company.findById(req.body.company);
+      if (!targetCompany || !(targetCompany as any).isActive) {
+        throw new AppError('Invalid or inactive company', 400);
       }
-
-      const query = this.buildCompanyQuery(currentUser, { _id: id });
-      const currentLead = await Lead.findOne(query);
-
-      if (!currentLead) {
-        return res.status(404).json({ message: 'Lead not found' });
-      }
-
-      const previousStatus = currentLead.status;
-      
-      // Update status
-      const updateData: any = {
-        status,
-        statusUpdatedAt: new Date(),
-        lastActivityAt: new Date(),
-        updatedBy: new mongoose.Types.ObjectId(currentUser.id)
-      };
-
-      // Track conversion/loss dates
-      if (status === LeadStatus.WON && previousStatus !== LeadStatus.WON) {
-        updateData.convertedAt = new Date();
-      } else if (status === LeadStatus.LOST && previousStatus !== LeadStatus.LOST) {
-        updateData.lostAt = new Date();
-      }
-
-      const lead = await Lead.findOneAndUpdate(
-        query,
-        { $set: updateData },
-        { new: true }
-      );
-
-      // Update score
-      if (lead) {
-        // await lead.updateScore();
-        await lead.save();
-      }
-
-      // Log activity
-      await this.logActivity(
-        id,
-        currentUser.companyId,
-        ActivityType.STATUS_CHANGED,
-        `Status changed: ${previousStatus} → ${status}`,
-        currentUser.id,
-        {
-          description: notes,
-          previousValue: previousStatus,
-          newValue: status
-        }
-      );
-
-      res.json({ 
-        message: 'Status updated successfully', 
-        lead 
-      });
-    } catch (error: any) {
-      console.error('Status update error:', error);
-      res.status(500).json({ 
-        message: 'Failed to update status',
-        error: process.env.NODE_ENV === 'development' ? error.message : undefined 
-      });
+      companyId = String(req.body.company);
     }
-  }
+    const companyObjId = new Types.ObjectId(companyId);
 
-  // 🏷️ UPDATE TYPE
-  async updateLeadType(req: AuthRequest, res: Response) {
-    try {
-      const { id } = req.params;
-      const { type } = req.body;
-      const currentUser = req.user!;
+    // ── Pre-flight: load all existing emails + phones for this company ────
+    //   One query instead of N queries — far cheaper at scale.
+    const incomingEmails = leads
+      .map(l => l.email ? String(l.email).toLowerCase().trim() : null)
+      .filter(Boolean) as string[];
 
-      if (!type || !Object.values(LeadType).includes(type)) {
-        return res.status(400).json({ message: 'Invalid type value' });
-      }
+    const incomingPhones = leads
+      .map(l => l.phone ? String(l.phone).trim() : null)
+      .filter(Boolean) as string[];
 
-      const query = this.buildCompanyQuery(currentUser, { _id: id });
-      const currentLead = await Lead.findOne(query);
+    // Fetch existing records that would conflict
+    const existingConflicts = await Lead.find({
+      company:   companyObjId,
+      isDeleted: false,
+      $or: [
+        ...(incomingEmails.length ? [{ email: { $in: incomingEmails } }] : []),
+        ...(incomingPhones.length ? [{ phone: { $in: incomingPhones } }] : []),
+      ],
+    }).select('_id email phone').lean();
 
-      if (!currentLead) {
-        return res.status(404).json({ message: 'Lead not found' });
-      }
-
-      const previousType = currentLead.type;
-
-      const lead = await Lead.findOneAndUpdate(
-        query,
-        { 
-          type, 
-          lastActivityAt: new Date(),
-          updatedBy: new mongoose.Types.ObjectId(currentUser.id) 
-        },
-        { new: true }
-      ).lean();
-
-      // Log activity
-      await this.logActivity(
-        id,
-        currentUser.companyId,
-        ActivityType.TYPE_CHANGED,
-        `Type changed: ${previousType} → ${type}`,
-        currentUser.id,
-        {
-          previousValue: previousType,
-          newValue: type
-        }
-      );
-
-      res.json({ message: 'Type updated successfully', lead });
-    } catch (error: any) {
-      res.status(500).json({ 
-        message: 'Failed to update type',
-        error: process.env.NODE_ENV === 'development' ? error.message : undefined 
-      });
+    // Build lookup maps for O(1) duplicate detection
+    const existingEmailMap = new Map<string, string>(); // email → _id
+    const existingPhoneMap = new Map<string, string>(); // phone → _id
+    for (const doc of existingConflicts) {
+      if (doc.email) existingEmailMap.set(doc.email, String(doc._id));
+      if (doc.phone) existingPhoneMap.set(doc.phone, String(doc._id));
     }
-  }
 
-  // 🎯 UPDATE PRIORITY
-  async updateLeadPriority(req: AuthRequest, res: Response) {
-    try {
-      const { id } = req.params;
-      const { priority } = req.body;
-      const currentUser = req.user!;
+    // ── Process each lead ─────────────────────────────────────────────────
+    const created:    any[]                                           = [];
+    const duplicates: { index: number; field: string; value: string; existingId: string }[] = [];
+    const failed:     { index: number; error: string }[]             = [];
 
-      if (!priority || !Object.values(LeadPriority).includes(priority)) {
-        return res.status(400).json({ message: 'Invalid priority value' });
+    // Track emails/phones we've already seen in THIS batch to catch intra-batch dups
+    const batchEmailsSeen = new Map<string, number>(); // email → first-seen index
+    const batchPhonesSeen = new Map<string, number>(); // phone → first-seen index
+
+    for (let i = 0; i < leads.length; i++) {
+      const raw = leads[i];
+
+      // ── Per-item validation ───────────────────────────────────────────
+      if (!raw.name) {
+        failed.push({ index: i, error: 'name is required' });
+        continue;
       }
 
-      const query = this.buildCompanyQuery(currentUser, { _id: id });
-      const currentLead = await Lead.findOne(query);
+      const email   = raw.email   ? String(raw.email).toLowerCase().trim()   : undefined;
+      const phone   = raw.phone   ? String(raw.phone).trim()                 : undefined;
 
-      if (!currentLead) {
-        return res.status(404).json({ message: 'Lead not found' });
+      // ── Check against existing DB records ─────────────────────────────
+      if (email && existingEmailMap.has(email)) {
+        duplicates.push({ index: i, field: 'email', value: email, existingId: existingEmailMap.get(email)! });
+        continue;
+      }
+      if (phone && existingPhoneMap.has(phone)) {
+        duplicates.push({ index: i, field: 'phone', value: phone, existingId: existingPhoneMap.get(phone)! });
+        continue;
       }
 
-      const previousPriority = currentLead.priority;
-
-      const lead = await Lead.findOneAndUpdate(
-        query,
-        { 
-          priority,
-          lastActivityAt: new Date(),
-          updatedBy: new mongoose.Types.ObjectId(currentUser.id) 
-        },
-        { new: true }
-      ).lean();
-
-      // Log activity
-      await this.logActivity(
-        id,
-        currentUser.companyId,
-        ActivityType.PRIORITY_CHANGED,
-        `Priority changed: ${previousPriority} → ${priority}`,
-        currentUser.id,
-        {
-          previousValue: previousPriority,
-          newValue: priority
-        }
-      );
-
-      res.json({ message: 'Priority updated successfully', lead });
-    } catch (error: any) {
-      res.status(500).json({ 
-        message: 'Failed to update priority',
-        error: process.env.NODE_ENV === 'development' ? error.message : undefined 
-      });
-    }
-  }
-
-  // 👤 ASSIGN LEAD
-  async assignLead(req: AuthRequest, res: Response) {
-    try {
-      const { id } = req.params;
-      const { assignedTo } = req.body;
-      const currentUser = req.user!;
-
-      if (!assignedTo || !mongoose.Types.ObjectId.isValid(assignedTo)) {
-        return res.status(400).json({ message: 'Invalid user ID for assignment' });
+      // ── Check for intra-batch duplicates ──────────────────────────────
+      if (email && batchEmailsSeen.has(email)) {
+        duplicates.push({ index: i, field: 'email', value: email, existingId: `batch[${batchEmailsSeen.get(email)}]` });
+        continue;
+      }
+      if (phone && batchPhonesSeen.has(phone)) {
+        duplicates.push({ index: i, field: 'phone', value: phone, existingId: `batch[${batchPhonesSeen.get(phone)}]` });
+        continue;
       }
 
-      const query = this.buildCompanyQuery(currentUser, { _id: id });
-      const currentLead = await Lead.findOne(query);
+      // Mark as seen in this batch
+      if (email) batchEmailsSeen.set(email, i);
+      if (phone) batchPhonesSeen.set(phone, i);
 
-      if (!currentLead) {
-        return res.status(404).json({ message: 'Lead not found' });
-      }
+      // ── Build the document ────────────────────────────────────────────
+      try {
+        const doc = await Lead.create({
+          name:         String(raw.name).trim(),
+          email,
+          phone,
+          whatsapp:     raw.whatsapp   ? String(raw.whatsapp).trim()   : undefined,
+          website:      raw.website    ? String(raw.website).trim()    : undefined,
+          address:      raw.address    ? String(raw.address).trim()    : undefined,
+          googleMapUrl: raw.googleMapUrl ? String(raw.googleMapUrl)    : undefined,
+          companyName:  raw.companyName  ? String(raw.companyName)     : undefined,
 
-      const previousAssignee = currentLead.assignedTo;
+          // Scraper-specific fields
+          businessName:    raw.businessName    ? String(raw.businessName).trim()  : undefined,
+          rating:          raw.rating          != null ? Number(raw.rating)        : undefined,
+          numberOfReviews: raw.numberOfReviews != null ? Number(raw.numberOfReviews) : undefined,
+          category:        raw.category        ? String(raw.category).trim()       : undefined,
+          googleMapsData:  raw.googleMapsData  ?? undefined,
 
-      const lead = await Lead.findOneAndUpdate(
-        query,
-        { 
-          assignedTo: new mongoose.Types.ObjectId(assignedTo),
-          lastActivityAt: new Date(),
-          updatedBy: new mongoose.Types.ObjectId(currentUser.id) 
-        },
-        { new: true }
-      )
-      .populate('assignedTo', 'name email')
-      .lean();
+          // Classification — validated with fallback to defaults
+          status:   Object.values(LeadStatus).includes(raw.status as LeadStatus)
+                      ? (raw.status as LeadStatus)   : LeadStatus.CREATED,
+          type:     Object.values(LeadType).includes(raw.type as LeadType)
+                      ? (raw.type as LeadType)       : LeadType.LEAD,
+          source:   Object.values(LeadSource).includes(raw.source as LeadSource)
+                      ? (raw.source as LeadSource)   : LeadSource.OTHER,
+          priority: Object.values(LeadPriority).includes(raw.priority as LeadPriority)
+                      ? (raw.priority as LeadPriority) : LeadPriority.MEDIUM,
 
-      // Log activity
-      await this.logActivity(
-        id,
-        currentUser.companyId,
-        ActivityType.LEAD_ASSIGNED,
-        'Lead reassigned',
-        currentUser.id,
-        {
-          description: `Assigned to ${(lead?.assignedTo as any)?.name}`,
-          previousValue: previousAssignee,
-          newValue: assignedTo,
-          metadata: { assignedTo }
-        }
-      );
+          isFavorite:    Boolean(raw.isFavorite ?? false),
+          tags:          Array.isArray(raw.tags) ? raw.tags.map(String) : [],
+          customFields:  raw.customFields ?? undefined,
+          estimatedValue: raw.estimatedValue != null ? Number(raw.estimatedValue) : undefined,
 
-      res.json({ message: 'Lead assigned successfully', lead });
-    } catch (error: any) {
-      res.status(500).json({ 
-        message: 'Failed to assign lead',
-        error: process.env.NODE_ENV === 'development' ? error.message : undefined 
-      });
-    }
-  }
-
-  // ⭐ TOGGLE FAVORITE
-  async toggleFavorite(req: AuthRequest, res: Response) {
-    try {
-      const { id } = req.params;
-      const { isFavorite } = req.body;
-      const currentUser = req.user!;
-
-      if (typeof isFavorite !== 'boolean') {
-        return res.status(400).json({ message: 'isFavorite must be boolean' });
-      }
-
-      const query = this.buildCompanyQuery(currentUser, { _id: id });
-      const lead = await Lead.findOneAndUpdate(
-        query,
-        { 
-          isFavorite, 
-          lastActivityAt: new Date(),
-          updatedBy: new mongoose.Types.ObjectId(currentUser.id) 
-        },
-        { new: true }
-      ).lean();
-
-      if (!lead) {
-        return res.status(404).json({ message: 'Lead not found' });
-      }
-
-      res.json({ 
-        message: `Lead ${isFavorite ? 'added to' : 'removed from'} favorites`,
-        lead 
-      });
-    } catch (error: any) {
-      res.status(500).json({ 
-        message: 'Failed to update favorite status',
-        error: process.env.NODE_ENV === 'development' ? error.message : undefined 
-      });
-    }
-  }
-
-  // 📅 SCHEDULE FOLLOW-UP
-  async scheduleFollowUp(req: AuthRequest, res: Response) {
-    try {
-      const { id } = req.params;
-      const { followUpDate, notes } = req.body;
-      const currentUser = req.user!;
-
-      if (!followUpDate) {
-        return res.status(400).json({ message: 'Follow-up date is required' });
-      }
-
-      const followUpDateTime = new Date(followUpDate);
-      if (followUpDateTime < new Date()) {
-        return res.status(400).json({ message: 'Follow-up date must be in the future' });
-      }
-
-      const query = this.buildCompanyQuery(currentUser, { _id: id });
-      const lead = await Lead.findOneAndUpdate(
-        query,
-        { 
-          nextFollowUp: followUpDateTime,
-          lastActivityAt: new Date(),
-          updatedBy: new mongoose.Types.ObjectId(currentUser.id) 
-        },
-        { new: true }
-      ).lean();
-
-      if (!lead) {
-        return res.status(404).json({ message: 'Lead not found' });
-      }
-
-      // Log activity
-      await this.logActivity(
-        id,
-        currentUser.companyId,
-        ActivityType.FOLLOW_UP_SCHEDULED,
-        'Follow-up scheduled',
-        currentUser.id,
-        {
-          description: notes || `Scheduled for ${followUpDateTime.toLocaleDateString()}`,
-          metadata: { followUpDate: followUpDateTime }
-        }
-      );
-
-      res.json({ 
-        message: 'Follow-up scheduled successfully', 
-        lead 
-      });
-    } catch (error: any) {
-      res.status(500).json({ 
-        message: 'Failed to schedule follow-up',
-        error: process.env.NODE_ENV === 'development' ? error.message : undefined 
-      });
-    }
-  }
-
-  // 📝 ADD NOTE
-  async addNote(req: AuthRequest, res: Response) {
-    try {
-      const { id } = req.params;
-      const { note } = req.body;
-      const currentUser = req.user!;
-
-      if (!note || note.trim().length === 0) {
-        return res.status(400).json({ message: 'Note content is required' });
-      }
-
-      const query = this.buildCompanyQuery(currentUser, { _id: id });
-      const lead = await Lead.findOne(query);
-
-      if (!lead) {
-        return res.status(404).json({ message: 'Lead not found' });
-      }
-
-      // Update last activity
-      lead.lastActivityAt = new Date();
-      await lead.save();
-
-      // Log activity
-      await this.logActivity(
-        id,
-        currentUser.companyId,
-        ActivityType.NOTE_ADDED,
-        'Note added',
-        currentUser.id,
-        {
-          description: note,
-          metadata: { noteLength: note.length }
-        }
-      );
-
-      res.json({ message: 'Note added successfully' });
-    } catch (error: any) {
-      res.status(500).json({ 
-        message: 'Failed to add note',
-        error: process.env.NODE_ENV === 'development' ? error.message : undefined 
-      });
-    }
-  }
-
-  // 🗑️ SOFT DELETE
-  async deleteLead(req: AuthRequest, res: Response) {
-    try {
-      const { id } = req.params;
-      const currentUser = req.user!;
-
-      if (!mongoose.Types.ObjectId.isValid(id)) {
-        return res.status(400).json({ message: 'Invalid lead ID' });
-      }
-
-      const query = currentUser.role === USER_ROLES.SUPER_ADMIN 
-        ? { _id: id, isDeleted: false } 
-        : this.buildCompanyQuery(currentUser, { _id: id });
-
-      const lead = await Lead.findOneAndUpdate(
-        query,
-        { 
-          isDeleted: true, 
-          deletedBy: new mongoose.Types.ObjectId(currentUser.id),
-          deletedAt: new Date()
-        },
-        { new: true }
-      );
-
-      if (!lead) {
-        return res.status(404).json({ message: 'Lead not found' });
-      }
-
-      res.json({ message: 'Lead moved to trash successfully' });
-    } catch (error: any) {
-      res.status(500).json({ 
-        message: 'Failed to delete lead',
-        error: process.env.NODE_ENV === 'development' ? error.message : undefined 
-      });
-    }
-  }
-
-  // 📦 BULK STATUS UPDATE
-  async bulkUpdateStatus(req: AuthRequest, res: Response) {
-    try {
-      const { leadIds, status } = req.body;
-      const currentUser = req.user!;
-
-      if (!Array.isArray(leadIds) || leadIds.length === 0) {
-        return res.status(400).json({ message: 'leadIds must be non-empty array' });
-      }
-      if (!status || !Object.values(LeadStatus).includes(status)) {
-        return res.status(400).json({ message: 'Invalid status value' });
-      }
-
-      const query: any = {
-        _id: { $in: leadIds.map((id: string) => new mongoose.Types.ObjectId(id)) },
-        isDeleted: false
-      };
-      
-      if (currentUser.role !== USER_ROLES.SUPER_ADMIN) {
-        query.company = new mongoose.Types.ObjectId(currentUser.companyId);
-      }
-
-      const result = await Lead.updateMany(
-        query,
-        { 
-          status,
+          company:         companyObjId,
+          createdBy:       new Types.ObjectId(user.id),
+          assignedTo:      raw.assignedTo && mongoose.Types.ObjectId.isValid(String(raw.assignedTo))
+                             ? new Types.ObjectId(String(raw.assignedTo))
+                             : undefined,
+          nextFollowUp:    raw.nextFollowUp ? new Date(String(raw.nextFollowUp)) : undefined,
           statusUpdatedAt: new Date(),
-          lastActivityAt: new Date(),
-          updatedBy: new mongoose.Types.ObjectId(currentUser.id)
+          lastActivityAt:  new Date(),
+        });
+
+        // Compute initial score
+        doc.computeScore();
+        await doc.save();
+
+        created.push(doc);
+
+        // Also register in maps so subsequent batch items don't re-insert
+        if (email) existingEmailMap.set(email, String(doc._id));
+        if (phone) existingPhoneMap.set(phone, String(doc._id));
+
+      } catch (err: any) {
+        // Catch Mongo duplicate key error that slipped through pre-flight
+        // (race condition between two concurrent bulk imports)
+        if (err.code === 11000) {
+          const dupField = err.keyPattern?.email ? 'email' : 'phone';
+          const dupValue = dupField === 'email' ? email : phone;
+          duplicates.push({
+            index: i,
+            field: dupField,
+            value: dupValue ?? '',
+            existingId: 'concurrent_insert',
+          });
+        } else {
+          failed.push({ index: i, error: err.message ?? 'Unknown error' });
         }
-      );
-
-      // Log activities for each lead
-      for (const leadId of leadIds) {
-        await this.logActivity(
-          leadId,
-          currentUser.companyId,
-          ActivityType.STATUS_CHANGED,
-          `Bulk status update to ${status}`,
-          currentUser.id,
-          {
-            newValue: status,
-            metadata: { bulkOperation: true }
-          }
-        );
       }
-
-      res.json({
-        message: 'Bulk status update successful',
-        modifiedCount: result.modifiedCount,
-        matchedCount: result.matchedCount
-      });
-    } catch (error: any) {
-      console.error('Bulk update error:', error);
-      res.status(500).json({ 
-        message: 'Bulk update failed',
-        error: process.env.NODE_ENV === 'development' ? error.message : undefined 
-      });
     }
+
+    // ── Fire-and-forget bulk activity log ─────────────────────────────────
+    if (created.length > 0) {
+      const activityDocs = created.map(lead => ({
+        leadId:      lead._id,
+        companyId:   companyObjId,
+        performedBy: new Types.ObjectId(user.id),
+        type:        ActivityType.LEAD_CREATED,
+        title:       `Lead "${lead.name}" created via bulk import`,
+        activityDate: new Date(),
+        metadata:    { bulkOperation: true, source: lead.source },
+      }));
+
+      Activity.insertMany(activityDocs, { ordered: false }).catch(err =>
+        console.error('[Bulk Activity Log Error]', err)
+      );
+    }
+
+    // ── Response ──────────────────────────────────────────────────────────
+    const response: ApiResponse = {
+      success: true,
+      message: `${created.length} lead(s) created, ${duplicates.length} duplicate(s) skipped, ${failed.length} failed`,
+      data: {
+        createdCount:   created.length,
+        duplicateCount: duplicates.length,
+        failedCount:    failed.length,
+        created,
+        duplicates,
+        failed,
+      },
+    };
+
+    // Use 207 Multi-Status when there were partial failures / skips
+    const statusCode = failed.length > 0 ? 207 : 201;
+    res.status(statusCode).json(response);
+
+  } catch (err) {
+    next(err);
   }
+};
 
-  // 📊 ANALYTICS - LEAD PIPELINE OVERVIEW
-  async getLeadAnalytics(req: AuthRequest, res: Response) {
-    try {
-      const currentUser = req.user!;
-      const { dateFrom, dateTo } = req.query;
+// ─── GET LEADS (list with full filtering + pagination) ────────────────────────
 
-      const companyId = currentUser.role === USER_ROLES.SUPER_ADMIN && req.query.companyId
-        ? req.query.companyId
-        : currentUser.companyId;
+export const getLeads = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const user = req.user!;
+    const q    = req.query as Record<string, string | undefined>;
 
-      const dateFilter: any = {};
-      if (dateFrom) dateFilter.$gte = new Date(dateFrom as string);
-      if (dateTo) dateFilter.$lte = new Date(dateTo as string);
+    const page  = Math.max(1, parseInt(q.page  ?? '1',  10));
+    const limit = Math.min(100, Math.max(1, parseInt(q.limit ?? '20', 10)));
+    const skip  = (page - 1) * limit;
 
-      const matchQuery: any = {
-        company: new mongoose.Types.ObjectId(companyId as string),
-        isDeleted: false
-      };
+    const filter = companyScope(user);
 
-      if (Object.keys(dateFilter).length > 0) {
-        matchQuery.createdAt = dateFilter;
+    if (q.status)   filter.status   = q.status;
+    if (q.type)     filter.type     = q.type;
+    if (q.source)   filter.source   = q.source;
+    if (q.priority) filter.priority = q.priority;
+    if (q.category) filter.category = q.category;
+
+    if (q.isFavorite !== undefined) filter.isFavorite = q.isFavorite === 'true';
+
+    if (q.assignedTo && mongoose.Types.ObjectId.isValid(q.assignedTo)) {
+      filter.assignedTo = new Types.ObjectId(q.assignedTo);
+    }
+
+    if (q.tags) {
+      const tagList = String(q.tags).split(',').map(t => t.trim()).filter(Boolean);
+      if (tagList.length) filter.tags = { $in: tagList };
+    }
+
+    if (q.minScore !== undefined || q.maxScore !== undefined) {
+      const scoreRange: Record<string, number> = {};
+      if (q.minScore) scoreRange.$gte = Number(q.minScore);
+      if (q.maxScore) scoreRange.$lte = Number(q.maxScore);
+      filter.score = scoreRange;
+    }
+
+    if (q.minRating !== undefined || q.maxRating !== undefined) {
+      const ratingRange: Record<string, number> = {};
+      if (q.minRating) ratingRange.$gte = Number(q.minRating);
+      if (q.maxRating) ratingRange.$lte = Number(q.maxRating);
+      filter.rating = ratingRange;
+    }
+
+    if (q.minValue !== undefined || q.maxValue !== undefined) {
+      const valRange: Record<string, number> = {};
+      if (q.minValue) valRange.$gte = Number(q.minValue);
+      if (q.maxValue) valRange.$lte = Number(q.maxValue);
+      filter.estimatedValue = valRange;
+    }
+
+    if (q.overdueFollowUp === 'true') {
+      filter.nextFollowUp = { $lte: new Date() };
+      filter.status = { $nin: [LeadStatus.WON, LeadStatus.LOST] };
+    }
+
+    if (q.dateFrom || q.dateTo) {
+      const dateRange: Record<string, Date> = {};
+      if (q.dateFrom) dateRange.$gte = new Date(q.dateFrom);
+      if (q.dateTo)   dateRange.$lte = new Date(q.dateTo);
+      filter.createdAt = dateRange;
+    }
+
+    if (q.search) {
+      filter.$text = { $search: q.search };
+    }
+
+    const sortField: SortField = VALID_SORT_FIELDS.includes(q.sortBy as SortField)
+      ? (q.sortBy as SortField)
+      : 'createdAt';
+    const sortDir = q.sortOrder === 'asc' ? 1 : -1;
+
+    const [leads, total] = await Promise.all([
+      Lead.find(filter)
+        .select('-isDeleted -deletedAt -deletedBy')
+        .populate('company',    'name type')
+        .populate('assignedTo', 'name email')
+        .populate('createdBy',  'name email')
+        .sort({ [sortField]: sortDir })
+        .skip(skip)
+        .limit(limit)
+        .lean({ virtuals: true }),
+      Lead.countDocuments(filter),
+    ]);
+
+    const response: ApiResponse = {
+      success: true,
+      data: leads,
+      pagination: { total, page, limit, pages: Math.ceil(total / limit) },
+    };
+    res.json(response);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ─── GET SINGLE LEAD ──────────────────────────────────────────────────────────
+
+export const getLeadById = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const user = req.user!;
+    const { id } = req.params as any;
+    const includeTimeline = req.query.includeTimeline !== 'false';
+
+    toObjectId(id, 'lead ID');
+
+    const filter = companyScope(user, { _id: id });
+    const lead = await Lead.findOne(filter)
+      .populate('company',    'name type')
+      .populate('assignedTo', 'name email avatar')
+      .populate('createdBy',  'name email')
+      .populate('updatedBy',  'name email')
+      .lean({ virtuals: true });
+
+    if (!lead) throw new AppError('Lead not found', 404);
+
+    let timeline = null;
+    if (includeTimeline) {
+      timeline = await Activity.find({ leadId: id })
+        .sort({ activityDate: -1 })
+        .limit(50)
+        .populate('performedBy', 'name email')
+        .lean();
+    }
+
+    const response: ApiResponse = { success: true, data: { lead, timeline } };
+    res.json(response);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ─── UPDATE LEAD ──────────────────────────────────────────────────────────────
+
+export const updateLead = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const user = req.user!;
+    const { id } = req.params as any;
+
+    toObjectId(id, 'lead ID');
+
+    const ALLOWED_FIELDS = [
+      'name', 'email', 'phone', 'whatsapp', 'website',
+      'address', 'googleMapUrl', 'companyName',
+      'estimatedValue', 'actualValue', 'tags', 'customFields',
+      'businessName', 'rating', 'numberOfReviews', 'category', 'googleMapsData',
+    ] as const;
+
+    const filter  = companyScope(user, { _id: id });
+    const current = await Lead.findOne(filter);
+    if (!current) throw new AppError('Lead not found', 404);
+
+    const updates: Record<string, unknown> = {};
+    const changedFields: string[] = [];
+
+    for (const key of ALLOWED_FIELDS) {
+      if (!(key in req.body)) continue;
+      const incoming = key === 'email'
+        ? String(req.body[key]).toLowerCase()
+        : req.body[key];
+
+      if (JSON.stringify((current as any)[key]) !== JSON.stringify(incoming)) {
+        updates[key] = incoming;
+        changedFields.push(key);
       }
+    }
 
-      // Aggregate pipeline analytics
-      const [
-        statusDistribution,
-        typeDistribution,
-        sourceDistribution,
-        priorityDistribution,
-        scoreDistribution
-      ] = await Promise.all([
-        // Status distribution
-        Lead.aggregate([
-          { $match: matchQuery },
-          { $group: { _id: '$status', count: { $sum: 1 }, totalValue: { $sum: '$estimatedValue' } } },
-          { $sort: { count: -1 } }
-        ]),
-        // Type distribution
-        Lead.aggregate([
-          { $match: matchQuery },
-          { $group: { _id: '$type', count: { $sum: 1 } } },
-          { $sort: { count: -1 } }
-        ]),
-        // Source distribution
-        Lead.aggregate([
-          { $match: matchQuery },
-          { $group: { _id: '$source', count: { $sum: 1 } } },
-          { $sort: { count: -1 } }
-        ]),
-        // Priority distribution
-        Lead.aggregate([
-          { $match: matchQuery },
-          { $group: { _id: '$priority', count: { $sum: 1 } } },
-          { $sort: { count: -1 } }
-        ]),
-        // Score ranges
-        Lead.aggregate([
-          { $match: matchQuery },
-          {
-            $bucket: {
-              groupBy: '$score',
-              boundaries: [0, 20, 40, 60, 80, 100],
-              default: 'Other',
-              output: { count: { $sum: 1 } }
-            }
-          }
-        ])
-      ]);
+    if (!changedFields.length) {
+      throw new AppError('No valid changes detected', 400);
+    }
 
-      // Get totals and averages
-      const totals = await Lead.aggregate([
+    updates.updatedBy      = new Types.ObjectId(user.id);
+    updates.lastActivityAt = new Date();
+
+    const updated = await Lead.findOneAndUpdate(
+      filter,
+      { $set: updates },
+      { new: true, runValidators: true }
+    ).lean({ virtuals: true });
+
+    await logActivity(id, user.companyId, user.id, ActivityType.LEAD_UPDATED, 'Lead information updated', {
+      description: `Updated: ${changedFields.join(', ')}`,
+      metadata:    { fields: changedFields },
+    });
+
+    const response: ApiResponse = { success: true, data: updated };
+    res.json(response);
+  } catch (err: any) {
+    if (err.code === 11000) return next(new AppError('A lead with this email or phone already exists', 409));
+    next(err);
+  }
+};
+
+// ─── UPDATE STATUS ────────────────────────────────────────────────────────────
+
+export const updateLeadStatus = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const user = req.user!;
+    const { id } = req.params as any;
+    const { status, notes } = req.body as { status: LeadStatus; notes?: string };
+
+    toObjectId(id, 'lead ID');
+    assertEnum(status, LeadStatus, 'lead status');
+
+    const filter  = companyScope(user, { _id: id });
+    const current = await Lead.findOne(filter);
+    if (!current) throw new AppError('Lead not found', 404);
+
+    const previousStatus = current.status;
+    current.status    = status;
+    current.updatedBy = new Types.ObjectId(user.id) as any;
+    current.computeScore();
+    await current.save();
+
+    await logActivity(id, user.companyId, user.id, ActivityType.STATUS_CHANGED,
+      `Status changed: ${previousStatus} → ${status}`, {
+      description:   notes,
+      previousValue: previousStatus,
+      newValue:      status,
+    });
+
+    const response: ApiResponse = { success: true, data: current };
+    res.json(response);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ─── UPDATE TYPE ──────────────────────────────────────────────────────────────
+
+export const updateLeadType = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const user = req.user!;
+    const { id } = req.params as any;
+    const { type } = req.body as { type: LeadType };
+
+    toObjectId(id, 'lead ID');
+    assertEnum(type, LeadType, 'lead type');
+
+    const filter  = companyScope(user, { _id: id });
+    const current = await Lead.findOne(filter);
+    if (!current) throw new AppError('Lead not found', 404);
+
+    const previousType = current.type;
+    const updated = await Lead.findOneAndUpdate(
+      filter,
+      { $set: { type, updatedBy: new Types.ObjectId(user.id), lastActivityAt: new Date() } },
+      { new: true, runValidators: true }
+    ).lean({ virtuals: true });
+
+    await logActivity(id, user.companyId, user.id, ActivityType.TYPE_CHANGED,
+      `Type changed: ${previousType} → ${type}`, {
+      previousValue: previousType,
+      newValue:      type,
+    });
+
+    const response: ApiResponse = { success: true, data: updated };
+    res.json(response);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ─── UPDATE PRIORITY ──────────────────────────────────────────────────────────
+
+export const updateLeadPriority = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const user = req.user!;
+    const { id } = req.params as any;
+    const { priority } = req.body as { priority: LeadPriority };
+
+    toObjectId(id, 'lead ID');
+    assertEnum(priority, LeadPriority, 'priority');
+
+    const filter  = companyScope(user, { _id: id });
+    const current = await Lead.findOne(filter);
+    if (!current) throw new AppError('Lead not found', 404);
+
+    const previousPriority = current.priority;
+    const updated = await Lead.findOneAndUpdate(
+      filter,
+      { $set: { priority, updatedBy: new Types.ObjectId(user.id), lastActivityAt: new Date() } },
+      { new: true, runValidators: true }
+    ).lean({ virtuals: true });
+
+    await logActivity(id, user.companyId, user.id, ActivityType.PRIORITY_CHANGED,
+      `Priority changed: ${previousPriority} → ${priority}`, {
+      previousValue: previousPriority,
+      newValue:      priority,
+    });
+
+    const response: ApiResponse = { success: true, data: updated };
+    res.json(response);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ─── ASSIGN LEAD ──────────────────────────────────────────────────────────────
+
+export const assignLead = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const user = req.user!;
+    const { id } = req.params as any;
+    const { assignedTo } = req.body as { assignedTo: string };
+
+    toObjectId(id, 'lead ID');
+    const assigneeId = toObjectId(assignedTo, 'assignedTo');
+
+    const filter  = companyScope(user, { _id: id });
+    const current = await Lead.findOne(filter);
+    if (!current) throw new AppError('Lead not found', 404);
+
+    const previousAssignee = current.assignedTo;
+    const updated = await Lead.findOneAndUpdate(
+      filter,
+      { $set: { assignedTo: assigneeId, updatedBy: new Types.ObjectId(user.id), lastActivityAt: new Date() } },
+      { new: true }
+    )
+      .populate('assignedTo', 'name email')
+      .lean({ virtuals: true });
+
+    await logActivity(id, user.companyId, user.id, ActivityType.LEAD_ASSIGNED, 'Lead reassigned', {
+      description:   `Assigned to ${(updated?.assignedTo as any)?.name ?? assignedTo}`,
+      previousValue: previousAssignee,
+      newValue:      assignedTo,
+      metadata:      { assignedTo },
+    });
+
+    const response: ApiResponse = { success: true, data: updated };
+    res.json(response);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ─── MARK CONTACTED ───────────────────────────────────────────────────────────
+
+export const markLeadContacted = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const user = req.user!;
+    const { id } = req.params as any;
+    const { interactionType = 'general' } = req.body as { interactionType?: string };
+
+    toObjectId(id, 'lead ID');
+
+    const filter = companyScope(user, { _id: id });
+    const lead   = await Lead.findOne(filter);
+    if (!lead) throw new AppError('Lead not found', 404);
+
+    if (interactionType === 'email')   lead.emailsSent   += 1;
+    if (interactionType === 'call')    lead.callsMade    += 1;
+    if (interactionType === 'meeting') lead.meetingsHeld += 1;
+
+    lead.updatedBy = new Types.ObjectId(user.id) as any;
+    await lead.markContacted();
+    lead.computeScore();
+    await lead.save();
+
+    await logActivity(id, user.companyId, user.id, ActivityType.STATUS_CHANGED, 'Lead marked as contacted', {
+      metadata: { interactionType },
+    });
+
+    const response: ApiResponse = { success: true, data: lead };
+    res.json(response);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ─── TOGGLE FAVORITE ─────────────────────────────────────────────────────────
+
+export const toggleFavorite = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const user = req.user!;
+    const { id } = req.params as any;
+    const { isFavorite } = req.body as { isFavorite: boolean };
+
+    toObjectId(id, 'lead ID');
+    if (typeof isFavorite !== 'boolean') throw new AppError('isFavorite must be a boolean', 400);
+
+    const filter  = companyScope(user, { _id: id });
+    const updated = await Lead.findOneAndUpdate(
+      filter,
+      { $set: { isFavorite, updatedBy: new Types.ObjectId(user.id), lastActivityAt: new Date() } },
+      { new: true }
+    ).lean({ virtuals: true });
+
+    if (!updated) throw new AppError('Lead not found', 404);
+
+    const response: ApiResponse = {
+      success: true,
+      data: updated,
+      message: isFavorite ? 'Lead added to favorites' : 'Lead removed from favorites',
+    };
+    res.json(response);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ─── SCHEDULE FOLLOW-UP ───────────────────────────────────────────────────────
+
+export const scheduleFollowUp = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const user = req.user!;
+    const { id } = req.params as any;
+    const { followUpDate, notes } = req.body as { followUpDate: string; notes?: string };
+
+    toObjectId(id, 'lead ID');
+    if (!followUpDate) throw new AppError('followUpDate is required', 400);
+    const followUpDt = new Date(followUpDate);
+    if (isNaN(followUpDt.getTime())) throw new AppError('followUpDate is not a valid date', 400);
+    if (followUpDt < new Date()) throw new AppError('followUpDate must be in the future', 400);
+
+    const filter  = companyScope(user, { _id: id });
+    const updated = await Lead.findOneAndUpdate(
+      filter,
+      { $set: { nextFollowUp: followUpDt, updatedBy: new Types.ObjectId(user.id), lastActivityAt: new Date() } },
+      { new: true }
+    ).lean({ virtuals: true });
+
+    if (!updated) throw new AppError('Lead not found', 404);
+
+    await logActivity(id, user.companyId, user.id, ActivityType.FOLLOW_UP_SCHEDULED, 'Follow-up scheduled', {
+      description: notes ?? `Scheduled for ${followUpDt.toLocaleDateString()}`,
+      metadata:    { followUpDate: followUpDt },
+    });
+
+    const response: ApiResponse = { success: true, data: updated };
+    res.json(response);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ─── ADD NOTE ─────────────────────────────────────────────────────────────────
+
+export const addNote = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const user = req.user!;
+    const { id } = req.params as any;
+    const { note } = req.body as { note: string };
+
+    toObjectId(id, 'lead ID');
+    if (!note?.trim()) throw new AppError('Note content is required', 400);
+
+    const filter = companyScope(user, { _id: id });
+    const lead   = await Lead.findOne(filter);
+    if (!lead) throw new AppError('Lead not found', 404);
+
+    lead.lastActivityAt = new Date();
+    lead.updatedBy = new Types.ObjectId(user.id) as any;
+    await lead.save();
+
+    await logActivity(id, user.companyId, user.id, ActivityType.NOTE_ADDED, 'Note added', {
+      description: note,
+      metadata:    { noteLength: note.length },
+    });
+
+    const response: ApiResponse = { success: true, message: 'Note added successfully' };
+    res.json(response);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ─── SOFT DELETE ──────────────────────────────────────────────────────────────
+
+export const deleteLead = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const user = req.user!;
+    const { id } = req.params as any;
+
+    const deletedById = toObjectId(id, 'lead ID');
+    const filter      = companyScope(user, { _id: id });
+    const lead        = await Lead.findOne(filter);
+
+    if (!lead) throw new AppError('Lead not found', 404);
+
+    await lead.softDelete(deletedById);
+
+    const response: ApiResponse = { success: true, message: 'Lead moved to trash' };
+    res.json(response);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ─── BULK STATUS UPDATE ───────────────────────────────────────────────────────
+
+export const bulkUpdateStatus = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const user = req.user!;
+    const { leadIds, status } = req.body as { leadIds: string[]; status: LeadStatus };
+
+    if (!Array.isArray(leadIds) || !leadIds.length) {
+      throw new AppError('leadIds must be a non-empty array', 400);
+    }
+    assertEnum(status, LeadStatus, 'lead status');
+
+    const objectIds = leadIds.map(lid => toObjectId(lid, 'leadId'));
+
+    const filter: Record<string, unknown> = {
+      _id:       { $in: objectIds },
+      isDeleted: false,
+    };
+    if (user.role !== UserRole.SUPER_ADMIN) {
+      filter.company = new Types.ObjectId(user.companyId);
+    }
+
+    const result = await Lead.updateMany(filter, {
+      $set: {
+        status,
+        statusUpdatedAt: new Date(),
+        lastActivityAt:  new Date(),
+        updatedBy:       new Types.ObjectId(user.id),
+      },
+    });
+
+    leadIds.forEach(lid =>
+      logActivity(lid, user.companyId, user.id, ActivityType.STATUS_CHANGED,
+        `Bulk status update → ${status}`, {
+        newValue: status,
+        metadata: { bulkOperation: true },
+      })
+    );
+
+    const response: ApiResponse = {
+      success: true,
+      message: `${result.modifiedCount} lead(s) updated`,
+      data: { matchedCount: result.matchedCount, modifiedCount: result.modifiedCount },
+    };
+    res.json(response);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ─── ANALYTICS ────────────────────────────────────────────────────────────────
+
+export const getLeadAnalytics = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const user = req.user!;
+    const q    = req.query as Record<string, string | undefined>;
+
+    const companyId =
+      user.role === UserRole.SUPER_ADMIN && q.companyId
+        ? q.companyId
+        : user.companyId;
+
+    const matchQuery: Record<string, unknown> = {
+      company:   new Types.ObjectId(companyId),
+      isDeleted: false,
+    };
+
+    if (q.dateFrom || q.dateTo) {
+      const range: Record<string, Date> = {};
+      if (q.dateFrom) range.$gte = new Date(q.dateFrom);
+      if (q.dateTo)   range.$lte = new Date(q.dateTo);
+      matchQuery.createdAt = range;
+    }
+
+    const groupAndSort = (field: string): mongoose.PipelineStage[] => [
+      { $match: matchQuery },
+      { $group: { _id: `$${field}`, count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+    ];
+
+    const [
+      statusDist, typeDist, sourceDist, priorityDist,
+      scoreBuckets, totals, overdueCount,
+    ] = await Promise.all([
+      Lead.aggregate([
+        { $match: matchQuery },
+        { $group: { _id: '$status', count: { $sum: 1 }, totalEstimatedValue: { $sum: '$estimatedValue' } } },
+        { $sort: { count: -1 } },
+      ]),
+      Lead.aggregate(groupAndSort('type')),
+      Lead.aggregate(groupAndSort('source')),
+      Lead.aggregate(groupAndSort('priority')),
+      Lead.aggregate([
+        { $match: matchQuery },
+        {
+          $bucket: {
+            groupBy:    '$score',
+            boundaries: [0, 20, 40, 60, 80, 101],
+            default:    'Unscored',
+            output:     { count: { $sum: 1 }, avgValue: { $avg: '$estimatedValue' } },
+          },
+        },
+      ]),
+      Lead.aggregate([
         { $match: matchQuery },
         {
           $group: {
-            _id: null,
-            totalLeads: { $sum: 1 },
-            avgScore: { $avg: '$score' },
+            _id:                 null,
+            totalLeads:          { $sum: 1 },
+            avgScore:            { $avg: '$score' },
             totalEstimatedValue: { $sum: '$estimatedValue' },
-            totalActualValue: { $sum: '$actualValue' },
-            avgInteractions: { $avg: '$totalInteractions' }
-          }
-        }
-      ]);
-
-      // Get overdue follow-ups count
-      const overdueCount = await Lead.countDocuments({
+            totalActualValue:    { $sum: '$actualValue' },
+            avgInteractions:     { $avg: '$totalInteractions' },
+            totalEmailsSent:     { $sum: '$emailsSent' },
+            totalCallsMade:      { $sum: '$callsMade' },
+            totalMeetingsHeld:   { $sum: '$meetingsHeld' },
+          },
+        },
+      ]),
+      Lead.countDocuments({
         ...matchQuery,
         nextFollowUp: { $lte: new Date() },
-        status: { $nin: [LeadStatus.WON, LeadStatus.LOST] }
-      });
+        status:       { $nin: [LeadStatus.WON, LeadStatus.LOST] },
+      }),
+    ]);
 
-      res.json({
-        overview: totals[0] || {},
-        statusDistribution,
-        typeDistribution,
-        sourceDistribution,
-        priorityDistribution,
-        scoreDistribution,
-        overdueFollowUps: overdueCount
-      });
-    } catch (error: any) {
-      console.error('Analytics error:', error);
-      res.status(500).json({ 
-        message: 'Failed to fetch analytics',
-        error: process.env.NODE_ENV === 'development' ? error.message : undefined 
-      });
-    }
+    const response: ApiResponse = {
+      success: true,
+      data: {
+        overview:             totals[0] ?? {},
+        statusDistribution:   statusDist,
+        typeDistribution:     typeDist,
+        sourceDistribution:   sourceDist,
+        priorityDistribution: priorityDist,
+        scoreDistribution:    scoreBuckets,
+        overdueFollowUps:     overdueCount,
+      },
+    };
+    res.json(response);
+  } catch (err) {
+    next(err);
   }
+};
 
-  // 📈 GET CONVERSION FUNNEL
-  async getConversionFunnel(req: AuthRequest, res: Response) {
-    try {
-      const currentUser = req.user!;
-      const { dateFrom, dateTo } = req.query;
+// ─── CONVERSION FUNNEL ────────────────────────────────────────────────────────
 
-      const companyId = currentUser.role === USER_ROLES.SUPER_ADMIN && req.query.companyId
-        ? req.query.companyId
-        : currentUser.companyId;
+export const getConversionFunnel = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const user = req.user!;
+    const q    = req.query as Record<string, string | undefined>;
 
-      const dateFilter: any = {};
-      if (dateFrom) dateFilter.$gte = new Date(dateFrom as string);
-      if (dateTo) dateFilter.$lte = new Date(dateTo as string);
+    const companyId =
+      user.role === UserRole.SUPER_ADMIN && q.companyId
+        ? q.companyId
+        : user.companyId;
 
-      const matchQuery: any = {
-        company: new mongoose.Types.ObjectId(companyId as string),
-        isDeleted: false
-      };
+    const matchQuery: Record<string, unknown> = {
+      company:   new Types.ObjectId(companyId),
+      isDeleted: false,
+    };
 
-      if (Object.keys(dateFilter).length > 0) {
-        matchQuery.createdAt = dateFilter;
-      }
+    if (q.dateFrom || q.dateTo) {
+      const range: Record<string, Date> = {};
+      if (q.dateFrom) range.$gte = new Date(q.dateFrom);
+      if (q.dateTo)   range.$lte = new Date(q.dateTo);
+      matchQuery.createdAt = range;
+    }
 
-      // Define funnel stages
-      const funnelStages = [
-        LeadStatus.CREATED,
-        LeadStatus.CONTACTED,
-        LeadStatus.QUALIFIED,
-        LeadStatus.PROPOSAL_SENT,
-        LeadStatus.NEGOTIATION,
-        LeadStatus.WON
-      ];
+    const FUNNEL_STAGES: LeadStatus[] = [
+      LeadStatus.CREATED, LeadStatus.CONTACTED, LeadStatus.QUALIFIED,
+      LeadStatus.PROPOSAL_SENT, LeadStatus.NEGOTIATION, LeadStatus.WON,
+    ];
 
-      const funnel = await Promise.all(
-        funnelStages.map(async (stage) => {
-          const count = await Lead.countDocuments({
-            ...matchQuery,
-            status: stage
-          });
-          return { stage, count };
-        })
-      );
+    const [funnel, totalLeads, wonLeads, lostLeads] = await Promise.all([
+      Lead.aggregate([
+        { $match: matchQuery },
+        { $group: { _id: '$status', count: { $sum: 1 } } },
+      ]).then(rows => {
+        const countMap = Object.fromEntries(rows.map((r: any) => [r._id, r.count]));
+        return FUNNEL_STAGES.map(stage => ({ stage, count: countMap[stage] ?? 0 }));
+      }),
+      Lead.countDocuments(matchQuery),
+      Lead.countDocuments({ ...matchQuery, status: LeadStatus.WON }),
+      Lead.countDocuments({ ...matchQuery, status: LeadStatus.LOST }),
+    ]);
 
-      // Calculate conversion rates
-      const totalLeads = await Lead.countDocuments(matchQuery);
-      const wonLeads = await Lead.countDocuments({
-        ...matchQuery,
-        status: LeadStatus.WON
-      });
-      const lostLeads = await Lead.countDocuments({
-        ...matchQuery,
-        status: LeadStatus.LOST
-      });
+    const conversionRate = totalLeads > 0 ? ((wonLeads  / totalLeads) * 100).toFixed(2) : '0.00';
+    const lossRate       = totalLeads > 0 ? ((lostLeads / totalLeads) * 100).toFixed(2) : '0.00';
 
-      const conversionRate = totalLeads > 0 ? (wonLeads / totalLeads) * 100 : 0;
-      const lossRate = totalLeads > 0 ? (lostLeads / totalLeads) * 100 : 0;
-
-      res.json({
+    const response: ApiResponse = {
+      success: true,
+      data: {
         funnel,
-        summary: {
-          totalLeads,
-          wonLeads,
-          lostLeads,
-          activeLeads: totalLeads - wonLeads - lostLeads,
-          conversionRate: conversionRate.toFixed(2),
-          lossRate: lossRate.toFixed(2)
-        }
-      });
-    } catch (error: any) {
-      console.error('Funnel error:', error);
-      res.status(500).json({ 
-        message: 'Failed to fetch conversion funnel',
-        error: process.env.NODE_ENV === 'development' ? error.message : undefined 
-      });
-    }
+        summary: { totalLeads, wonLeads, lostLeads, activeLeads: totalLeads - wonLeads - lostLeads, conversionRate, lossRate },
+      },
+    };
+    res.json(response);
+  } catch (err) {
+    next(err);
   }
+};
 
-  // 🎯 GET OVERDUE FOLLOW-UPS
-  async getOverdueFollowUps(req: AuthRequest, res: Response) {
-    try {
-      const currentUser = req.user!;
-      const { assignedTo } = req.query;
+// ─── OVERDUE FOLLOW-UPS ───────────────────────────────────────────────────────
 
-      const query: any = {
-        isDeleted: false,
-        nextFollowUp: { $lte: new Date() },
-        status: { $nin: [LeadStatus.WON, LeadStatus.LOST] }
-      };
+export const getOverdueFollowUps = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const user = req.user!;
+    const q    = req.query as Record<string, string | undefined>;
 
-      if (currentUser.role !== USER_ROLES.SUPER_ADMIN) {
-        query.company = new mongoose.Types.ObjectId(currentUser.companyId);
-      }
+    const filter: Record<string, unknown> = {
+      isDeleted:    false,
+      nextFollowUp: { $lte: new Date() },
+      status:       { $nin: [LeadStatus.WON, LeadStatus.LOST] },
+    };
 
-      if (assignedTo) {
-        query.assignedTo = new mongoose.Types.ObjectId(assignedTo as string);
-      }
-
-      const overdueLeads = await Lead.find(query)
-        .select('name email phone status priority nextFollowUp assignedTo')
-        .populate('assignedTo', 'name email')
-        .sort({ nextFollowUp: 1 })
-        .limit(100)
-        .lean();
-
-      res.json({
-        count: overdueLeads.length,
-        leads: overdueLeads
-      });
-    } catch (error: any) {
-      console.error('Overdue follow-ups error:', error);
-      res.status(500).json({ 
-        message: 'Failed to fetch overdue follow-ups',
-        error: process.env.NODE_ENV === 'development' ? error.message : undefined 
-      });
+    if (user.role !== UserRole.SUPER_ADMIN) {
+      filter.company = new Types.ObjectId(user.companyId);
     }
+
+    if (q.assignedTo && mongoose.Types.ObjectId.isValid(q.assignedTo)) {
+      filter.assignedTo = new Types.ObjectId(q.assignedTo);
+    }
+
+    const leads = await Lead.find(filter)
+      .select('name email phone status priority nextFollowUp assignedTo score daysSinceLastContact')
+      .populate('assignedTo', 'name email')
+      .sort({ nextFollowUp: 1 })
+      .limit(100)
+      .lean({ virtuals: true });
+
+    const response: ApiResponse = {
+      success: true,
+      data: { count: leads.length, leads },
+    };
+    res.json(response);
+  } catch (err) {
+    next(err);
   }
-}
+};

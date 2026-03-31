@@ -1,42 +1,100 @@
-import * as dotenv from "dotenv";
-dotenv.config();
-import express, { NextFunction, Request, Response } from "express";
-import cors from "cors";
-import bodyParser from "body-parser";
-import cookieParser from "cookie-parser";
-import { CustomError } from "./middlewares/custom.error";
-import router from "./routers/router";
-import connectDB from "./DataBase/database";
+import 'dotenv/config';
+import express, { Request, Response, NextFunction } from 'express';
+import cors from 'cors';
+import morgan from 'morgan';
+import cookieParser from 'cookie-parser';
+import connectDB from './DataBase/database';
+import { CustomError } from './middlewares/custom.error';
+import router from './routers/router';
 
+// ─────────────────────────────────────────────────────────────
+// App Initialization
+// ─────────────────────────────────────────────────────────────
 const app = express();
+const PORT = Number(process.env.PORT ?? 5000);
 
-// middlewares
-app.use(cors());
-app.use(express.json());
-app.use(bodyParser.urlencoded({ extended: false }));
-app.use(bodyParser.json());
+// ─────────────────────────────────────────────────────────────
+// Global Middleware
+// ─────────────────────────────────────────────────────────────
+app.use(cors({
+  origin: process.env.CLIENT_ORIGIN ?? '*',
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
+
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-// routers
-app.use("/api", router);
+if (process.env.NODE_ENV !== 'production') {
+  app.use(morgan('dev'));
+} else {
+  app.use(morgan('combined'));
+}
 
-// 404 handler — prefix unused params with _
-app.use((_req: Request, _res: Response, next: NextFunction) => {
-  next(new CustomError("API route not found", 404));
+// ─────────────────────────────────────────────────────────────
+// Health Check Route
+// ─────────────────────────────────────────────────────────────
+app.get('/health', (_req: Request, res: Response) => {
+  res.status(200).json({
+    status: 'ok',
+    environment: process.env.NODE_ENV ?? 'development',
+    timestamp: new Date().toISOString(),
+  });
 });
 
-// global error handling — prefix unused next with _
-app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-  if (err instanceof CustomError) {
-    return res.status(err.status).json({ error: err.message });
+// ─────────────────────────────────────────────────────────────
+// API Routes
+// ─────────────────────────────────────────────────────────────
+app.use('/api', router);
+
+// ─────────────────────────────────────────────────────────────
+// 404 Handler
+// ─────────────────────────────────────────────────────────────
+app.use((req: Request, _res: Response, next: NextFunction) => {
+  next(new CustomError(`Route ${req.originalUrl} not found`, 404));
+});
+
+// ─────────────────────────────────────────────────────────────
+// Global Error Handler
+// ─────────────────────────────────────────────────────────────
+app.use(
+  (err: any, _req: Request, res: Response, _next: NextFunction) => {
+    if (err instanceof CustomError) {
+      return res.status(err.status).json({
+        success: false,
+        message: err.message,
+      });
+    }
+
+    console.error('🔥 Unexpected Error:', err);
+
+    return res.status(500).json({
+      success: false,
+      message: 'Internal Server Error',
+    });
   }
-  console.error(err);
-  return res.status(500).send("Something is wrong!");
-});
+);
 
-// Connect DB and Start Server
-const PORT = process.env.PORT || 8000;
-app.listen(PORT, async () => {
-  await connectDB();
-  console.log(`Listening ON port ${PORT}`);
-});
+// ─────────────────────────────────────────────────────────────
+// Server Bootstrap (Async Safe)
+// ─────────────────────────────────────────────────────────────
+const startServer = async () => {
+  try {
+    await connectDB();
+
+    app.listen(PORT, () => {
+      console.log(`🚀 Server running on http://localhost:${PORT}`);
+      console.log(`📡 Environment: ${process.env.NODE_ENV ?? 'development'}`);
+    });
+
+  } catch (error) {
+    console.error('❌ Failed to start server:', error);
+    process.exit(1);
+  }
+};
+
+startServer();
+
+export default app;

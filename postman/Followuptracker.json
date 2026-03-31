@@ -1,0 +1,1426 @@
+{
+  "info": {
+    "name": "Follow-up Tracker API",
+    "_postman_id": "followup-tracker-2024",
+    "description": "Complete API collection for Follow-up Tracker — Leads, Templates, Messages (WhatsApp & Email)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl",     "value": "http://localhost:5000",  "type": "string" },
+    { "key": "leadId",      "value": "",                       "type": "string" },
+    { "key": "templateId",  "value": "",                       "type": "string" },
+    { "key": "messageId",   "value": "",                       "type": "string" }
+  ],
+  "item": [
+
+    {
+      "name": "🏥 Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Status ok', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.status).to.eql('ok');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"], "path": ["health"] }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "👤 Leads",
+      "item": [
+
+        {
+          "name": "Get All Leads",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('success true', () => pm.expect(pm.response.json().success).to.be.true);",
+                  "pm.test('data is array', () => pm.expect(pm.response.json().data).to.be.an('array'));",
+                  "const leads = pm.response.json().data;",
+                  "if (leads.length > 0) { pm.collectionVariables.set('leadId', leads[0]._id); }"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/leads?page=1&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "leads"],
+              "query": [
+                { "key": "page",  "value": "1" },
+                { "key": "limit", "value": "10" }
+              ]
+            }
+          }
+        },
+
+        {
+          "name": "Get All Leads — Search",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/leads?search=acme",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "leads"],
+              "query": [{ "key": "search", "value": "acme" }]
+            }
+          }
+        },
+
+        {
+          "name": "Get Lead by ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('data has _id', () => pm.expect(pm.response.json().data).to.have.property('_id'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/leads/{{leadId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "leads", "{{leadId}}"]
+            }
+          }
+        },
+
+        {
+          "name": "Create Lead",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test('success true', () => pm.expect(json.success).to.be.true);",
+                  "pm.test('has _id', () => pm.expect(json.data).to.have.property('_id'));",
+                  "pm.collectionVariables.set('leadId', json.data._id);",
+                  "console.log('leadId set to', json.data._id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Wayne Enterprises\",\n  \"email\": \"bruce@wayne.com\",\n  \"phone\": \"+1 555 002 0001\",\n  \"company\": \"Wayne Corp\",\n  \"tags\": [\"enterprise\", \"vip\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/leads",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "leads"]
+            }
+          }
+        },
+
+        {
+          "name": "Create Lead — Validation Error (missing email)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('success false', () => pm.expect(pm.response.json().success).to.be.false);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"No Email Lead\",\n  \"phone\": \"+1 555 000 0000\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/leads",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "leads"]
+            }
+          }
+        },
+
+        {
+          "name": "Update Lead",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('company updated', () => pm.expect(pm.response.json().data.company).to.eql('Wayne Industries'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"company\": \"Wayne Industries\",\n  \"tags\": [\"enterprise\", \"vip\", \"priority\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/leads/{{leadId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "leads", "{{leadId}}"]
+            }
+          }
+        },
+
+        {
+          "name": "Delete Lead",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('deleted message', () => pm.expect(pm.response.json().message).to.include('deleted'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/leads/{{leadId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "leads", "{{leadId}}"]
+            }
+          }
+        },
+
+        {
+          "name": "Get Lead — 404 (bad ID)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 404', () => pm.response.to.have.status(404));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/leads/000000000000000000000000",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "leads", "000000000000000000000000"]
+            }
+          }
+        }
+
+      ]
+    },
+
+    {
+      "name": "📄 Templates",
+      "item": [
+
+        {
+          "name": "Get All Templates",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('data is array', () => pm.expect(pm.response.json().data).to.be.an('array'));",
+                  "const tpls = pm.response.json().data;",
+                  "if (tpls.length > 0) { pm.collectionVariables.set('templateId', tpls[0]._id); }"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/templates?page=1&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "templates"],
+              "query": [
+                { "key": "page",  "value": "1" },
+                { "key": "limit", "value": "10" }
+              ]
+            }
+          }
+        },
+
+        {
+          "name": "Get Templates — WhatsApp only",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/templates?channel=whatsapp",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "templates"],
+              "query": [{ "key": "channel", "value": "whatsapp" }]
+            }
+          }
+        },
+
+        {
+          "name": "Get Templates — Email only",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/templates?channel=email",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "templates"],
+              "query": [{ "key": "channel", "value": "email" }]
+            }
+          }
+        },
+
+        {
+          "name": "Get Template by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/templates/{{templateId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "templates", "{{templateId}}"]
+            }
+          }
+        },
+
+        {
+          "name": "Create Template — WhatsApp",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test('channel is whatsapp', () => pm.expect(json.data.channel).to.eql('whatsapp'));",
+                  "pm.collectionVariables.set('templateId', json.data._id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Demo Request WA\",\n  \"channel\": \"whatsapp\",\n  \"body\": \"Hi {{name}}! Would you be open to a quick 15-min demo of our platform? 🚀\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/templates",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "templates"]
+            }
+          }
+        },
+
+        {
+          "name": "Create Template — Email",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.test('has subject', () => pm.expect(pm.response.json().data.subject).to.be.a('string'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Demo Request Email\",\n  \"channel\": \"email\",\n  \"subject\": \"Quick Demo for {{company}}?\",\n  \"body\": \"Hi {{name}},\\n\\nWould you be open to a quick 15-minute demo?\\n\\nBest,\\n{{sender}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/templates",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "templates"]
+            }
+          }
+        },
+
+        {
+          "name": "Create Template — Validation Error (email missing subject)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Bad Email Template\",\n  \"channel\": \"email\",\n  \"body\": \"Hi {{name}}, no subject provided.\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/templates",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "templates"]
+            }
+          }
+        },
+
+        {
+          "name": "Update Template",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Demo Request WA (Updated)\",\n  \"body\": \"Hi {{name}}! 👋 Interested in a quick demo? Takes only 15 mins!\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/templates/{{templateId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "templates", "{{templateId}}"]
+            }
+          }
+        },
+
+        {
+          "name": "Increment Template Usage",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('usageCount incremented', () => pm.expect(pm.response.json().data.usageCount).to.be.above(0));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/templates/{{templateId}}/use",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "templates", "{{templateId}}", "use"]
+            }
+          }
+        },
+
+        {
+          "name": "Delete Template",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/templates/{{templateId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "templates", "{{templateId}}"]
+            }
+          }
+        }
+
+      ]
+    },
+
+    {
+      "name": "💬 Messages",
+      "item": [
+
+        {
+          "name": "📊 Stats & Listing",
+          "item": [
+
+            {
+              "name": "Get Stats — All Channels",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                      "const d = pm.response.json().data;",
+                      "pm.test('has total', () => pm.expect(d).to.have.property('total'));",
+                      "pm.test('has replied', () => pm.expect(d).to.have.property('replied'));",
+                      "pm.test('has autoScheduled', () => pm.expect(d).to.have.property('autoScheduled'));",
+                      "pm.test('has needsFollowUp', () => pm.expect(d).to.have.property('needsFollowUp'));"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/messages/stats",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "messages", "stats"]
+                }
+              }
+            },
+
+            {
+              "name": "Get Stats — WhatsApp Only",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/messages/stats?channel=whatsapp",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "messages", "stats"],
+                  "query": [{ "key": "channel", "value": "whatsapp" }]
+                }
+              }
+            },
+
+            {
+              "name": "Get Stats — Email Only",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/messages/stats?channel=email",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "messages", "stats"],
+                  "query": [{ "key": "channel", "value": "email" }]
+                }
+              }
+            },
+
+            {
+              "name": "Get All Messages",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                      "pm.test('has pagination', () => pm.expect(pm.response.json().pagination).to.be.an('object'));",
+                      "const msgs = pm.response.json().data;",
+                      "if (msgs.length > 0) { pm.collectionVariables.set('messageId', msgs[0]._id); }",
+                      "console.log('messageId set to', pm.collectionVariables.get('messageId'));"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/messages?page=1&limit=10",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "messages"],
+                  "query": [
+                    { "key": "page",  "value": "1" },
+                    { "key": "limit", "value": "10" }
+                  ]
+                }
+              }
+            },
+
+            {
+              "name": "Get Messages — WhatsApp",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/messages?channel=whatsapp",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "messages"],
+                  "query": [{ "key": "channel", "value": "whatsapp" }]
+                }
+              }
+            },
+
+            {
+              "name": "Get Messages — Email",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/messages?channel=email",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "messages"],
+                  "query": [{ "key": "channel", "value": "email" }]
+                }
+              }
+            },
+
+            {
+              "name": "Get Messages — Filter by WA Status (seen)",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/messages?channel=whatsapp&waStatus=seen",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "messages"],
+                  "query": [
+                    { "key": "channel",  "value": "whatsapp" },
+                    { "key": "waStatus", "value": "seen" }
+                  ]
+                }
+              }
+            },
+
+            {
+              "name": "Get Messages — Filter by Email Status (opened)",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/messages?channel=email&emailStatus=opened",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "messages"],
+                  "query": [
+                    { "key": "channel",     "value": "email" },
+                    { "key": "emailStatus", "value": "opened" }
+                  ]
+                }
+              }
+            },
+
+            {
+              "name": "Get Messages — Needs Follow-up (7-day rule)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/messages?needsFollowUp=true",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "messages"],
+                  "query": [{ "key": "needsFollowUp", "value": "true" }]
+                }
+              }
+            },
+
+            {
+              "name": "Get Messages — Auto Scheduled Follow-ups",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/messages?followUpStatus=auto_scheduled",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "messages"],
+                  "query": [{ "key": "followUpStatus", "value": "auto_scheduled" }]
+                }
+              }
+            },
+
+            {
+              "name": "Get Messages — Bulk Only",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/messages?isBulk=true",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "messages"],
+                  "query": [{ "key": "isBulk", "value": "true" }]
+                }
+              }
+            },
+
+            {
+              "name": "Get Messages — Text Search",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/messages?search=proposal",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "messages"],
+                  "query": [{ "key": "search", "value": "proposal" }]
+                }
+              }
+            },
+
+            {
+              "name": "Get Message by ID",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                      "pm.test('has replies array', () => pm.expect(pm.response.json().data.replies).to.be.an('array'));"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/messages/{{messageId}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "messages", "{{messageId}}"]
+                }
+              }
+            }
+
+          ]
+        },
+
+        {
+          "name": "✉️ Create Messages",
+          "item": [
+
+            {
+              "name": "Send WhatsApp Message (Single)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                      "const json = pm.response.json();",
+                      "pm.test('channel is whatsapp', () => pm.expect(json.data.channel).to.eql('whatsapp'));",
+                      "pm.collectionVariables.set('messageId', json.data._id);",
+                      "console.log('messageId =', json.data._id);"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"leadId\": \"000000000000000000000001\",\n  \"leadName\": \"Acme Corporation\",\n  \"leadEmail\": \"contact@acme.com\",\n  \"leadPhone\": \"+1 555 001 0001\",\n  \"channel\": \"whatsapp\",\n  \"body\": \"Hi! Following up on our Q3 integration proposal. Would love to connect this week!\",\n  \"waStatus\": \"sent\",\n  \"isBulk\": false\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/messages",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "messages"]
+                }
+              }
+            },
+
+            {
+              "name": "Send Email Message (Single)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                      "pm.test('has subject', () => pm.expect(pm.response.json().data.subject).to.be.a('string'));"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"leadId\": \"000000000000000000000004\",\n  \"leadName\": \"Umbrella Corp\",\n  \"leadEmail\": \"sales@umbrella.com\",\n  \"leadPhone\": \"+1 555 001 0004\",\n  \"channel\": \"email\",\n  \"subject\": \"Your Custom Integration Proposal – Umbrella Corp\",\n  \"body\": \"Dear team,\\n\\nThank you for your time last week. Please find our tailored proposal attached.\\n\\nWarm regards,\\nJane\",\n  \"emailStatus\": \"sent\",\n  \"isBulk\": false\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/messages",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "messages"]
+                }
+              }
+            },
+
+            {
+              "name": "Send Bulk WhatsApp Message",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                      "pm.test('isBulk is true', () => pm.expect(pm.response.json().data.isBulk).to.be.true);",
+                      "pm.test('bulkCount present', () => pm.expect(pm.response.json().data.bulkCount).to.eql(120));"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"leadId\": \"000000000000000000000002\",\n  \"leadName\": \"Globex Industries\",\n  \"leadEmail\": \"info@globex.io\",\n  \"leadPhone\": \"+1 555 001 0002\",\n  \"channel\": \"whatsapp\",\n  \"body\": \"[Bulk] 🎉 New feature alert! We just launched AI-powered lead scoring. Check it out!\",\n  \"waStatus\": \"sent\",\n  \"isBulk\": true,\n  \"bulkCount\": 120\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/messages",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "messages"]
+                }
+              }
+            },
+
+            {
+              "name": "Send Bulk Email Message",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"leadId\": \"000000000000000000000001\",\n  \"leadName\": \"Acme Corporation\",\n  \"leadEmail\": \"contact@acme.com\",\n  \"leadPhone\": \"+1 555 001 0001\",\n  \"channel\": \"email\",\n  \"subject\": \"[Bulk] Q4 Offer: Limited-Time Upgrade\",\n  \"body\": \"Hi {{name}},\\n\\nWe are excited to offer exclusive Q4 pricing.\\n\\nBest,\\nSales Team\",\n  \"emailStatus\": \"sent\",\n  \"isBulk\": true,\n  \"bulkCount\": 47\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/messages",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "messages"]
+                }
+              }
+            },
+
+            {
+              "name": "Send Message — Validation Error (email, no subject)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test('Status 422', () => pm.response.to.have.status(422));"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"leadId\": \"000000000000000000000001\",\n  \"leadName\": \"Acme Corporation\",\n  \"leadEmail\": \"contact@acme.com\",\n  \"leadPhone\": \"+1 555 001 0001\",\n  \"channel\": \"email\",\n  \"body\": \"No subject email — should fail\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/messages",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "messages"]
+                }
+              }
+            }
+
+          ]
+        },
+
+        {
+          "name": "🔄 Status Updates (Webhooks)",
+          "item": [
+
+            {
+              "name": "Update WA Status → delivered",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                      "pm.test('waStatus updated', () => pm.expect(pm.response.json().data.waStatus).to.eql('delivered'));",
+                      "pm.test('deliveredAt set', () => pm.expect(pm.response.json().data.deliveredAt).to.not.be.null);"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ],
+              "request": {
+                "method": "PATCH",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"waStatus\": \"delivered\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/messages/{{messageId}}/status",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "messages", "{{messageId}}", "status"]
+                }
+              }
+            },
+
+            {
+              "name": "Update WA Status → seen",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                      "pm.test('waStatus is seen', () => pm.expect(pm.response.json().data.waStatus).to.eql('seen'));"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ],
+              "request": {
+                "method": "PATCH",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"waStatus\": \"seen\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/messages/{{messageId}}/status",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "messages", "{{messageId}}", "status"]
+                }
+              }
+            },
+
+            {
+              "name": "Update Email Status → opened",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                      "pm.test('emailStatus is opened', () => pm.expect(pm.response.json().data.emailStatus).to.eql('opened'));",
+                      "pm.test('openedAt set', () => pm.expect(pm.response.json().data.openedAt).to.not.be.undefined);"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ],
+              "request": {
+                "method": "PATCH",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"emailStatus\": \"opened\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/messages/{{messageId}}/status",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "messages", "{{messageId}}", "status"]
+                }
+              }
+            },
+
+            {
+              "name": "Update Email Status → replied",
+              "request": {
+                "method": "PATCH",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"emailStatus\": \"replied\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/messages/{{messageId}}/status",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "messages", "{{messageId}}", "status"]
+                }
+              }
+            },
+
+            {
+              "name": "Status Update — Validation Error (no status field)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test('Status 400', () => pm.response.to.have.status(400));"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ],
+              "request": {
+                "method": "PATCH",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/messages/{{messageId}}/status",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "messages", "{{messageId}}", "status"]
+                }
+              }
+            }
+
+          ]
+        },
+
+        {
+          "name": "🤖 Follow-up Management",
+          "item": [
+
+            {
+              "name": "Set Follow-up → auto_scheduled",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                      "pm.test('followUpStatus updated', () => pm.expect(pm.response.json().data.followUpStatus).to.eql('auto_scheduled'));"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ],
+              "request": {
+                "method": "PATCH",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"followUpStatus\": \"auto_scheduled\",\n  \"followUpScheduledAt\": \"2026-03-10T10:00:00.000Z\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/messages/{{messageId}}/follow-up",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "messages", "{{messageId}}", "follow-up"]
+                }
+              }
+            },
+
+            {
+              "name": "Set Follow-up → sent (Manual Follow-up)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                      "pm.test('followUpStatus is sent', () => pm.expect(pm.response.json().data.followUpStatus).to.eql('sent'));"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ],
+              "request": {
+                "method": "PATCH",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"followUpStatus\": \"sent\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/messages/{{messageId}}/follow-up",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "messages", "{{messageId}}", "follow-up"]
+                }
+              }
+            },
+
+            {
+              "name": "Set Follow-up → done",
+              "request": {
+                "method": "PATCH",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"followUpStatus\": \"done\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/messages/{{messageId}}/follow-up",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "messages", "{{messageId}}", "follow-up"]
+                }
+              }
+            },
+
+            {
+              "name": "Bulk Trigger — All Channels",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                      "pm.test('has modifiedCount', () => pm.expect(pm.response.json().data).to.have.property('modifiedCount'));"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/messages/bulk-follow-up",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "messages", "bulk-follow-up"]
+                }
+              }
+            },
+
+            {
+              "name": "Bulk Trigger — WhatsApp Only",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"channel\": \"whatsapp\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/messages/bulk-follow-up",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "messages", "bulk-follow-up"]
+                }
+              }
+            },
+
+            {
+              "name": "Bulk Trigger — Email Only",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"channel\": \"email\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/messages/bulk-follow-up",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "messages", "bulk-follow-up"]
+                }
+              }
+            }
+
+          ]
+        },
+
+        {
+          "name": "🔔 Reminders",
+          "item": [
+
+            {
+              "name": "Set Reminder",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                      "pm.test('reminderAt set', () => pm.expect(pm.response.json().data.reminderAt).to.not.be.undefined);"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ],
+              "request": {
+                "method": "PATCH",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"reminderAt\": \"2026-03-15T09:00:00.000Z\",\n  \"reminderNote\": \"Follow up about the Q3 proposal pricing — they seemed interested.\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/messages/{{messageId}}/reminder",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "messages", "{{messageId}}", "reminder"]
+                }
+              }
+            },
+
+            {
+              "name": "Set Reminder — Validation Error (no reminderAt)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test('Status 400', () => pm.response.to.have.status(400));"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ],
+              "request": {
+                "method": "PATCH",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"reminderNote\": \"Missing the reminderAt field\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/messages/{{messageId}}/reminder",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "messages", "{{messageId}}", "reminder"]
+                }
+              }
+            }
+
+          ]
+        },
+
+        {
+          "name": "💬 Replies",
+          "item": [
+
+            {
+              "name": "Add Reply from Lead",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                      "const data = pm.response.json().data;",
+                      "pm.test('reply added', () => pm.expect(data.replies.length).to.be.above(0));",
+                      "pm.test('followUpStatus done', () => pm.expect(data.followUpStatus).to.eql('done'));"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"text\": \"Thanks for reaching out! We're very interested. Can we schedule a call this Thursday?\",\n  \"receivedAt\": \"2026-02-24T14:30:00.000Z\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/messages/{{messageId}}/replies",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "messages", "{{messageId}}", "replies"]
+                }
+              }
+            },
+
+            {
+              "name": "Add Reply — Validation Error (empty text)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test('Status 400', () => pm.response.to.have.status(400));"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"text\": \"\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/messages/{{messageId}}/replies",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "messages", "{{messageId}}", "replies"]
+                }
+              }
+            }
+
+          ]
+        },
+
+        {
+          "name": "🗑️ Delete Message",
+          "item": [
+
+            {
+              "name": "Delete Message",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                      "pm.test('deleted message', () => pm.expect(pm.response.json().message).to.include('deleted'));"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ],
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/messages/{{messageId}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "messages", "{{messageId}}"]
+                }
+              }
+            },
+
+            {
+              "name": "Delete Message — 404 (bad ID)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test('Status 404', () => pm.response.to.have.status(404));"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ],
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/messages/000000000000000000000099",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "messages", "000000000000000000000099"]
+                }
+              }
+            }
+
+          ]
+        }
+
+      ]
+    },
+
+    {
+      "name": "⚠️ Error Scenarios",
+      "item": [
+
+        {
+          "name": "404 — Unknown Route",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 404', () => pm.response.to.have.status(404));",
+                  "pm.test('success false', () => pm.expect(pm.response.json().success).to.be.false);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/nonexistent",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "nonexistent"]
+            }
+          }
+        },
+
+        {
+          "name": "400 — Invalid ObjectId (CastError)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('success false', () => pm.expect(pm.response.json().success).to.be.false);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/leads/not-a-valid-id",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "leads", "not-a-valid-id"]
+            }
+          }
+        }
+
+      ]
+    }
+
+  ]
+}
