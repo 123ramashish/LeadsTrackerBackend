@@ -125,7 +125,7 @@ async login(req: Request, res: Response) {
       ? { phone: identifier, isDeleted: false }
       : { email: identifier.toLowerCase(), isDeleted: false };
 
-    const user = await User.findOne(query).select('+password');
+    const user = await User.findOne(query).select('+password').populate('company', 'name').lean();
     
     if (!user) {
       return res.status(401).json({ message: 'Invalid credentials' });
