@@ -1,0 +1,246 @@
+{
+  "info": {
+    "name": "WhatsApp Connection API",
+    "description": "Manage WhatsApp Business API connections per tenant/company",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5000/api/whatsapp-connections",
+      "type": "string"
+    },
+    {
+      "key": "bearerToken",
+      "value": "",
+      "type": "string",
+      "description": "JWT token from login endpoint"
+    },
+    {
+      "key": "companyId",
+      "value": "",
+      "type": "string",
+      "description": "Company ID (for SUPER_ADMIN impersonation)"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{bearerToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "📊 Read Operations",
+      "item": [
+        {
+          "name": "GET / - Connection Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}?companyId={{companyId}}",
+              "host": ["{{baseUrl}}"],
+              "query": [
+                {
+                  "key": "companyId",
+                  "value": "{{companyId}}",
+                  "description": "Optional: for SUPER_ADMIN to query other companies"
+                }
+              ]
+            },
+            "description": "Returns current status, QR validity, phone number, and stats. Auto-creates record on first call."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /dashboard - Full Dashboard",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard?companyId={{companyId}}",
+              "host": ["{{baseUrl}}", "dashboard"],
+              "query": [
+                {
+                  "key": "companyId",
+                  "value": "{{companyId}}"
+                }
+              ]
+            },
+            "description": "Full dashboard payload: connection state + aggregated metrics + recent history."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /history - Connection Events",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/history?limit=20&companyId={{companyId}}",
+              "host": ["{{baseUrl}}", "history"],
+              "query": [
+                { "key": "limit", "value": "20", "description": "Max 50" },
+                { "key": "companyId", "value": "{{companyId}}" }
+              ]
+            },
+            "description": "Returns the last N connection lifecycle events (capped at 50)."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🔐 QR Flow",
+      "item": [
+        {
+          "name": "POST /generate-qr",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  // No body required\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/generate-qr?companyId={{companyId}}",
+              "host": ["{{baseUrl}}", "generate-qr"],
+              "query": [
+                { "key": "companyId", "value": "{{companyId}}" }
+              ]
+            },
+            "description": "Generates fresh QR code (90s TTL). Returns base64 QR + metadata. Guard: 409 if already connected."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /refresh-qr",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  // No body required\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/refresh-qr?companyId={{companyId}}",
+              "host": ["{{baseUrl}}", "refresh-qr"],
+              "query": [
+                { "key": "companyId", "value": "{{companyId}}" }
+              ]
+            },
+            "description": "Re-generates QR when expired or not scanned. Same response shape as generate-qr."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /confirm",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNumber\": \"+1234567890\",\n  \"displayName\": \"My Business\",\n  \"sessionData\": \"optional-base64-session\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/confirm?companyId={{companyId}}",
+              "host": ["{{baseUrl}}", "confirm"],
+              "query": [
+                { "key": "companyId", "value": "{{companyId}}" }
+              ]
+            },
+            "description": "Called when auth succeeds. Transitions status → connected. Usually handled automatically by Baileys events."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🔄 Lifecycle",
+      "item": [
+        {
+          "name": "POST /disconnect",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Manual disconnect by admin\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/disconnect?companyId={{companyId}}",
+              "host": ["{{baseUrl}}", "disconnect"],
+              "query": [
+                { "key": "companyId", "value": "{{companyId}}" }
+              ]
+            },
+            "description": "Manually disconnects, clears session data, records reason. Status → disconnected."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "⚙️ Configuration",
+      "item": [
+        {
+          "name": "PATCH /webhook",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"url\": \"https://myapp.com/webhook\",\n  \"secret\": \"whsec_xxxxx\",\n  \"events\": [\"message.received\", \"message.sent\"],\n  \"isActive\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/webhook?companyId={{companyId}}",
+              "host": ["{{baseUrl}}", "webhook"],
+              "query": [
+                { "key": "companyId", "value": "{{companyId}}" }
+              ]
+            },
+            "description": "Configure inbound-message webhook. All fields optional; partial updates supported."
+          },
+          "response": []
+        },
+        {
+          "name": "PATCH /stats (SUPER_ADMIN only)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"totalEnquiries\": 150,\n  \"totalSlotsBooked\": 42,\n  \"totalMsgSent\": 1200,\n  \"totalMsgReceived\": 980,\n  \"avgResponseMs\": 4500\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/stats?companyId={{companyId}}",
+              "host": ["{{baseUrl}}", "stats"],
+              "query": [
+                { "key": "companyId", "value": "{{companyId}}" }
+              ]
+            },
+            "description": "Internal route for background jobs to update rolling usage stats. SUPER_ADMIN only."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

@@ -12,7 +12,7 @@ import {
   FollowUpStatus, 
   IMessageReply, 
   Channel 
-} from '../../types';
+} from '../../../types';
 
 // ── Interface: DO NOT extend Document ─────────────────────────────────────
 export interface IMessage {

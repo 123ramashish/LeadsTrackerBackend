@@ -10,7 +10,7 @@ const whatsappTemplateRouter = Router();
 const ctrl = new WhatsAppTemplateController();
 
 // All routes require auth + tenant isolation
-// whatsappTemplateRouter.use(authenticate, enforceTenant);
+whatsappTemplateRouter.use(authenticate, enforceTenant);
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -21,7 +21,7 @@ const ctrl = new WhatsAppTemplateController();
  */
 whatsappTemplateRouter.get(
   '/',
-  // authorizeRoles([USER_ROLES.SUPER_ADMIN, USER_ROLES.ADMIN]),
+  authorizeRoles([USER_ROLES.SUPER_ADMIN, USER_ROLES.ADMIN]),
   ctrl.getConfig.bind(ctrl)
 );
 
@@ -32,7 +32,7 @@ whatsappTemplateRouter.get(
  */
 whatsappTemplateRouter.delete(
   '/',
-  // authorizeRoles([USER_ROLES.SUPER_ADMIN]),
+  authorizeRoles([USER_ROLES.SUPER_ADMIN]),
   ctrl.deleteConfig.bind(ctrl)
 );
 
@@ -44,7 +44,7 @@ whatsappTemplateRouter.delete(
  */
 whatsappTemplateRouter.post(
   '/categories',
-  // authorizeRoles([USER_ROLES.SUPER_ADMIN, USER_ROLES.ADMIN]),
+  authorizeRoles([USER_ROLES.SUPER_ADMIN, USER_ROLES.ADMIN]),
   ctrl.addCategory.bind(ctrl)
 );
 
@@ -55,7 +55,7 @@ whatsappTemplateRouter.post(
  */
 whatsappTemplateRouter.patch(
   '/categories/reorder',
-  // authorizeRoles([USER_ROLES.SUPER_ADMIN, USER_ROLES.ADMIN]),
+  authorizeRoles([USER_ROLES.SUPER_ADMIN, USER_ROLES.ADMIN]),
   ctrl.reorderCategories.bind(ctrl)
 );
 
@@ -65,7 +65,7 @@ whatsappTemplateRouter.patch(
  */
 whatsappTemplateRouter.patch(
   '/categories/:categoryId',
-  // authorizeRoles([USER_ROLES.SUPER_ADMIN, USER_ROLES.ADMIN]),
+  authorizeRoles([USER_ROLES.SUPER_ADMIN, USER_ROLES.ADMIN]),
   ctrl.updateCategory.bind(ctrl)
 );
 
@@ -75,7 +75,7 @@ whatsappTemplateRouter.patch(
  */
 whatsappTemplateRouter.delete(
   '/categories/:categoryId',
-  // authorizeRoles([USER_ROLES.SUPER_ADMIN, USER_ROLES.ADMIN]),
+  authorizeRoles([USER_ROLES.SUPER_ADMIN, USER_ROLES.ADMIN]),
   ctrl.deleteCategory.bind(ctrl)
 );
 
@@ -88,7 +88,7 @@ whatsappTemplateRouter.delete(
  */
 whatsappTemplateRouter.post(
   '/categories/:categoryId/templates',
-  // authorizeRoles([USER_ROLES.SUPER_ADMIN, USER_ROLES.ADMIN]),
+  authorizeRoles([USER_ROLES.SUPER_ADMIN, USER_ROLES.ADMIN]),
   ctrl.addTemplate.bind(ctrl)
 );
 
@@ -99,7 +99,7 @@ whatsappTemplateRouter.post(
  */
 whatsappTemplateRouter.post(
   '/categories/:categoryId/templates/:templateId/duplicate',
-  // authorizeRoles([USER_ROLES.SUPER_ADMIN, USER_ROLES.ADMIN]),
+  authorizeRoles([USER_ROLES.SUPER_ADMIN, USER_ROLES.ADMIN]),
   ctrl.duplicateTemplate.bind(ctrl)
 );
 
@@ -109,7 +109,7 @@ whatsappTemplateRouter.post(
  */
 whatsappTemplateRouter.patch(
   '/categories/:categoryId/templates/:templateId',
-  // authorizeRoles([USER_ROLES.SUPER_ADMIN, USER_ROLES.ADMIN]),
+  authorizeRoles([USER_ROLES.SUPER_ADMIN, USER_ROLES.ADMIN]),
   ctrl.updateTemplate.bind(ctrl)
 );
 
@@ -119,7 +119,7 @@ whatsappTemplateRouter.patch(
  */
 whatsappTemplateRouter.delete(
   '/categories/:categoryId/templates/:templateId',
-  // authorizeRoles([USER_ROLES.SUPER_ADMIN, USER_ROLES.ADMIN]),
+  authorizeRoles([USER_ROLES.SUPER_ADMIN, USER_ROLES.ADMIN]),
   ctrl.deleteTemplate.bind(ctrl)
 );
 

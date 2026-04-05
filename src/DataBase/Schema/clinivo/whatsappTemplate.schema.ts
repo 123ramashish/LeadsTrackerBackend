@@ -1,6 +1,9 @@
 // DataBase/Schema/whatsappTemplate.schema.ts
-import mongoose, { Document, Schema, Types } from 'mongoose';
+import mongoose, { Document, Schema, Types, Model } from 'mongoose'; // add Model
 
+interface IWhatsAppTemplateConfigStatics extends Model<IWhatsAppTemplateConfig> {
+  getDefaultCategories(): Omit<ICategory, '_id' | 'createdAt' | 'updatedAt'>[];
+}
 // ── Sub-document: Individual Template ────────────────────────────────────────
 
 export interface ITemplate {
@@ -200,9 +203,9 @@ WhatsAppTemplateConfigSchema.statics.getDefaultCategories = function (): Omit<IC
 // ── Indexes ───────────────────────────────────────────────────────────────────
 WhatsAppTemplateConfigSchema.index({ company: 1, isDeleted: 1 });
 
-const WhatsAppTemplateConfig = mongoose.model<IWhatsAppTemplateConfig>(
-  'WhatsAppTemplateConfig',
-  WhatsAppTemplateConfigSchema
-);
+const WhatsAppTemplateConfig = mongoose.model<
+  IWhatsAppTemplateConfig,
+  IWhatsAppTemplateConfigStatics
+>('WhatsAppTemplateConfig', WhatsAppTemplateConfigSchema);
 
 export default WhatsAppTemplateConfig;

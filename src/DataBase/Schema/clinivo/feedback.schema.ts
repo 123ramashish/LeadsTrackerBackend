@@ -13,6 +13,8 @@ export const FEEDBACK_STATUS = {
   REVIEWED: 'reviewed',
   RESOLVED: 'resolved',
   ARCHIVED: 'archived',
+  IGNORED: 'ignored',
+   GOOGLE_UPLOADED: 'google_uploaded',
 } as const;
 export type FeedbackStatus = (typeof FEEDBACK_STATUS)[keyof typeof FEEDBACK_STATUS];
 

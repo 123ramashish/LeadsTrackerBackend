@@ -130,4 +130,5 @@ whatsappConnectionRouter.patch(
   connCtrl.updateStats.bind(connCtrl)
 );
 
+
 export { whatsappConnectionRouter };

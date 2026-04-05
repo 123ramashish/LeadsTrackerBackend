@@ -15,7 +15,7 @@ interface AuthRequest extends Request {
 }
 
 // ─── Token Helper ─────────────────────────────────────────────────────────────
-const generateAccessToken = async (user: IUser): Promise<string> => {
+const generateAccessToken = async (user: any): Promise<string> => {
   let companyName: string | null = null;
 
   if (user.company && user.userRole !== USER_ROLES.SUPER_ADMIN) {
@@ -35,14 +35,14 @@ const generateAccessToken = async (user: IUser): Promise<string> => {
   return jwt.sign(payload, process.env.JWT_SECRET!, { expiresIn: '2h' });
 };
 
-const generateRefreshToken = async (user: IUser): Promise<string> => {
+const generateRefreshToken = async (user: any): Promise<string> => {
   const { token } = await (user as any).generateRefreshToken();
   await user.save();
   return token;
 };
 
 // ─── Safe user payload (no sensitive fields) ──────────────────────────────────
-const toPublicUser = (user: IUser, companyName?: string | null) => ({
+const toPublicUser = (user: any, companyName?: string | null) => ({
   id: user._id,
   name: user.name,
   email: user.email,
@@ -125,7 +125,7 @@ async login(req: Request, res: Response) {
       ? { phone: identifier, isDeleted: false }
       : { email: identifier.toLowerCase(), isDeleted: false };
 
-    const user = await User.findOne(query).select('+password').populate('company', 'name').lean();
+    const user = await User.findOne(query).select('+password').populate('company', 'name');
     
     if (!user) {
       return res.status(401).json({ message: 'Invalid credentials' });

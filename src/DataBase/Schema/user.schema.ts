@@ -20,6 +20,7 @@ export interface IUser extends Document {
   phone: string;
   password: string;
   company?: mongoose.Types.ObjectId;
+  companyName?: string;
   userRole: UserRole;
   isVerified: boolean;
   isLocked: boolean;

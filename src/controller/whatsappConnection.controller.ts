@@ -1,14 +1,34 @@
 // controller/whatsappConnection.controller.ts
 import { Request, Response } from 'express';
 import mongoose from 'mongoose';
+import * as fs from 'fs';
+import * as path from 'path';
 import WhatsAppConnection, {
   WA_CONNECTION_STATUS,
-  IWhatsAppConnection,
 } from '../DataBase/Schema/clinivo/whatsappconnection.schema';
 
-// ── NOTE: Replace these imports with your actual WA library ───────────────────
-// Popular choices: @whiskeysockets/baileys, whatsapp-web.js, or a cloud API
-// The controller is library-agnostic; inject your WA client via a service layer.
+// ─────────────────────────────────────────────────────────────────────────────
+// Types (for inline service)
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface QRResult {
+  qrCode: string;     // base64 PNG data URI
+  qrCodeRaw: string;  // raw pairing string
+  expiresAt: Date;
+}
+
+interface ConnectionResult {
+  phoneNumber: string;
+  displayName: string;
+  sessionData: string;
+}
+
+type QRCallback = (result: QRResult) => void;
+type ConnectCallback = (result: ConnectionResult) => void;
+type DisconnectCb = (reason: string) => void;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Augmented Request
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface AuthRequest extends Request {
@@ -21,6 +41,281 @@ interface AuthRequest extends Request {
   };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Inline WhatsApp Session Manager (Singleton Pattern)
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface SessionEntry {
+  socket: any; // WASocket (typed via dynamic import)
+  messageCache: Map<string, any>;
+  qrCallback?: QRCallback;
+  connectCallback?: ConnectCallback;
+  disconnectCb?: DisconnectCb;
+}
+
+class InlineWhatsAppService {
+  private sessions = new Map<string, SessionEntry>();
+  private SESSION_ROOT = path.resolve(process.cwd(), 'sessions');
+
+  constructor() {
+    if (!fs.existsSync(this.SESSION_ROOT)) {
+      fs.mkdirSync(this.SESSION_ROOT, { recursive: true });
+    }
+  }
+
+  private sessionDir(companyId: string): string {
+    const dir = path.join(this.SESSION_ROOT, companyId);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    return dir;
+  }
+
+  private clearSessionFiles(companyId: string): void {
+    const dir = path.join(this.SESSION_ROOT, companyId);
+    if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true });
+  }
+
+  // ── Dynamic import helper for ESM modules ──────────────────────────────────
+private async importBaileys(): Promise<typeof import('@whiskeysockets/baileys')> {
+  return new Function('return import("@whiskeysockets/baileys")')();
+}
+
+private async importQRCode(): Promise<typeof import('qrcode')> {
+  return new Function('return import("qrcode")')();
+}
+
+private async importBoom(): Promise<typeof import("@hapi/boom")> {
+  return new Function('return import("@hapi/boom")')();
+}
+
+  // ── Main session initializer ───────────────────────────────────────────────
+  async initSession(
+    companyId: string,
+    systemUserId: string,
+    onQR: QRCallback,
+    onConnect: ConnectCallback,
+    onDisconnect: DisconnectCb,
+  ): Promise<void> {
+    // Close existing session first
+    if (this.sessions.has(companyId)) {
+      await this.closeSession(companyId, 'Reinitialising');
+    }
+
+    // Dynamic imports for ESM modules
+    const baileys = await this.importBaileys();
+    const QRCode = await this.importQRCode();
+    const { Boom } = await this.importBoom();
+
+    const {  fetchLatestBaileysVersion, makeCacheableSignalKeyStore, useMultiFileAuthState, makeWASocket, DisconnectReason } = baileys;
+    
+    const { version: latestVersion } = await fetchLatestBaileysVersion();
+    const { state, saveCreds } = await useMultiFileAuthState(this.sessionDir(companyId));
+    const messageCache = new Map<string, any>();
+
+    const socket = makeWASocket({
+      version: latestVersion,
+      printQRInTerminal: false,
+      auth: {
+        creds: state.creds,
+        keys: makeCacheableSignalKeyStore(state.keys, console as any),
+      },
+      getMessage: async (key: any) => {
+        const cacheKey = `${key.remoteJid}:${key.id}`;
+        return messageCache.get(cacheKey) ?? undefined;
+      },
+    });
+
+    // Cache incoming messages
+    socket.ev.on('messages.upsert', ({ messages }: any) => {
+      for (const msg of messages) {
+        if (msg.key?.remoteJid && msg.key?.id) {
+          messageCache.set(`${msg.key.remoteJid}:${msg.key.id}`, msg.message);
+        }
+      }
+    });
+
+    const entry: SessionEntry = {
+      socket,
+      messageCache,
+      qrCallback: onQR,
+      connectCallback: onConnect,
+      disconnectCb: onDisconnect,
+    };
+    this.sessions.set(companyId, entry);
+
+    // ── Connection event handler ─────────────────────────────────────────────
+    socket.ev.on('connection.update', async (update: any) => {
+      const { connection, lastDisconnect, qr } = update;
+
+      // QR Code received
+      if (qr) {
+        const expiresAt = new Date(Date.now() + 90_000);
+        const qrCode = await QRCode.toDataURL(qr);
+
+        onQR({ qrCode, qrCodeRaw: qr, expiresAt });
+
+        await WhatsAppConnection.findOneAndUpdate(
+          { company: new mongoose.Types.ObjectId(companyId), isDeleted: false },
+          {
+            $set: {
+              status: WA_CONNECTION_STATUS.QR_PENDING,
+              qrCode,
+              qrCodeRaw: qr,
+              qrGeneratedAt: new Date(),
+              qrExpiresAt: expiresAt,
+              updatedBy: new mongoose.Types.ObjectId(systemUserId),
+            },
+            $push: {
+              history: {
+                $each: [{ event: 'qr_generated', at: new Date() }],
+                $position: 0,
+                $slice: 20,
+              },
+            },
+          },
+          { upsert: true }
+        );
+      }
+
+      // Connected
+      if (connection === 'open') {
+        const me:any = socket.user;
+        const phoneNumber = me.id.split(':')[0];
+        const displayName = me.name ?? '';
+        const sessionData = JSON.stringify(state.creds);
+
+        onConnect({ phoneNumber: `+${phoneNumber}`, displayName, sessionData });
+
+        await WhatsAppConnection.findOneAndUpdate(
+          { company: new mongoose.Types.ObjectId(companyId), isDeleted: false },
+          {
+            $set: {
+              status: WA_CONNECTION_STATUS.CONNECTED,
+              phoneNumber: `+${phoneNumber}`,
+              displayName,
+              connectedAt: new Date(),
+              lastSeenAt: new Date(),
+              qrCode: null,
+              qrCodeRaw: null,
+              qrExpiresAt: null,
+              updatedBy: new mongoose.Types.ObjectId(systemUserId),
+            },
+            $push: {
+              history: {
+                $each: [{ event: 'connected', at: new Date(), meta: { phoneNumber } }],
+                $position: 0,
+                $slice: 20,
+              },
+            },
+          }
+        );
+      }
+
+      // Disconnected
+      if (connection === 'close') {
+        const statusCode = (lastDisconnect?.error as any)?.output?.statusCode;
+        const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+        const reason = (DisconnectReason as any)[statusCode] || 'unknown';
+
+        onDisconnect(reason);
+
+        await WhatsAppConnection.findOneAndUpdate(
+          { company: new mongoose.Types.ObjectId(companyId), isDeleted: false },
+          {
+            $set: {
+              status: WA_CONNECTION_STATUS.DISCONNECTED,
+              disconnectedAt: new Date(),
+              disconnectReason: reason,
+              qrCode: null,
+              qrCodeRaw: null,
+              qrExpiresAt: null,
+              updatedBy: new mongoose.Types.ObjectId(systemUserId),
+            },
+            $push: {
+              history: {
+                $each: [{ event: 'disconnected', at: new Date(), meta: { reason } }],
+                $position: 0,
+                $slice: 20,
+              },
+            },
+          }
+        );
+
+        this.sessions.delete(companyId);
+
+        if (!shouldReconnect) {
+          this.clearSessionFiles(companyId);
+        } else {
+          setTimeout(() => {
+            this.initSession(companyId, systemUserId, onQR, onConnect, onDisconnect)
+              .catch(console.error);
+          }, 3000);
+        }
+      }
+    });
+
+    socket.ev.on('creds.update', saveCreds);
+  }
+
+  async closeSession(companyId: string, reason = 'Manual disconnect'): Promise<void> {
+    const entry = this.sessions.get(companyId);
+    if (!entry) return;
+
+    try {
+      await entry.socket.logout();
+    } catch {
+      // Ignore if already dead
+    }
+
+    entry.socket.end(new Error(reason));
+    this.sessions.delete(companyId);
+  }
+
+  isConnected(companyId: string): boolean {
+    return this.sessions.has(companyId);
+  }
+
+  async sendTextMessage(companyId: string, to: string, text: string): Promise<boolean> {
+    const entry = this.sessions.get(companyId);
+    if (!entry) throw new Error('No active session for this company');
+
+    const jid = to.includes('@') ? to : `${to.replace(/\D/g, '')}@s.whatsapp.net`;
+    await entry.socket.sendMessage(jid, { text });
+    return true;
+  }
+
+  async restoreAllSessions(): Promise<void> {
+    const conns = await WhatsAppConnection.find({
+      status: WA_CONNECTION_STATUS.CONNECTED,
+      isDeleted: false,
+    }).lean();
+
+    for (const c of conns) {
+      const companyId = String(c.company);
+      const userId = String(c.updatedBy);
+      const sessionPath = path.join(this.SESSION_ROOT, companyId);
+
+      if (!fs.existsSync(sessionPath)) continue;
+
+      console.log(`[WA] Restoring session for company ${companyId}`);
+
+      await this.initSession(
+        companyId,
+        userId,
+        () => {},
+        () => {},
+        (reason) => console.warn(`[WA] Company ${companyId} disconnected: ${reason}`)
+      ).catch((e) => console.error(`[WA] Restore failed for ${companyId}:`, e));
+    }
+  }
+}
+
+// Singleton instance
+const inlineWaService = new InlineWhatsAppService();
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
 function resolveCompanyId(req: AuthRequest): string | null {
   const user = req.user!;
   if (user.isSuperAdmin && req.query.companyId) {
@@ -30,27 +325,18 @@ function resolveCompanyId(req: AuthRequest): string | null {
   return user.companyId ?? null;
 }
 
-// ── Simulate QR generation (replace with real Baileys / cloud-API call) ───────
-async function generateQRCode(companyId: string): Promise<{ qrCode: string; qrCodeRaw: string; expiresAt: Date }> {
-  // TODO: Replace with:
-  //   const { qr } = await waClientService.initSession(companyId)
-  //   const qrCode = await QRCode.toDataURL(qr)   // npm i qrcode
-  //
-  // For now we return a placeholder so the API is wired correctly.
-  const mockRaw = `2@${companyId}-${Date.now()},randomAuthKey,serverKey,clientPublic`;
-  const expiresAt = new Date(Date.now() + 90_000); // 90 seconds
-  return {
-    qrCode:    `data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScAAAAAElFTkSuQmCC`,
-    qrCodeRaw: mockRaw,
-    expiresAt,
-  };
+function toObjectId(id: string) {
+  return new mongoose.Types.ObjectId(id);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Controller
+// ─────────────────────────────────────────────────────────────────────────────
 
 export default class WhatsAppConnectionController {
 
   // ───────────────────────────────────────────────────────────────────────────
   // GET /whatsapp-connection
-  // Returns current connection state (status, QR validity, phone, etc.)
   // ───────────────────────────────────────────────────────────────────────────
   async getStatus(req: AuthRequest, res: Response): Promise<void> {
     try {
@@ -58,21 +344,20 @@ export default class WhatsAppConnectionController {
       if (!companyId) { res.status(400).json({ message: 'Invalid company ID' }); return; }
 
       let conn = await WhatsAppConnection.findOne({ company: companyId, isDeleted: false })
-        .select('-sessionData') // never expose session
+        .select('-sessionData')
         .lean();
 
-      // Auto-create empty record on first call
       if (!conn) {
         const created = await WhatsAppConnection.create({
-          company:   companyId,
-          status:    WA_CONNECTION_STATUS.DISCONNECTED,
-          createdBy: req.user!.id,
-          updatedBy: req.user!.id,
+          company: companyId,
+          status: WA_CONNECTION_STATUS.DISCONNECTED,
+          createdBy: toObjectId(req.user!.id),
+          updatedBy: toObjectId(req.user!.id),
         });
         conn = created.toObject() as any;
       }
 
-      // Expire stale QR_PENDING records automatically
+      // Auto-expire stale QR
       if (
         conn!.status === WA_CONNECTION_STATUS.QR_PENDING &&
         conn!.qrExpiresAt &&
@@ -81,12 +366,17 @@ export default class WhatsAppConnectionController {
         await WhatsAppConnection.findOneAndUpdate(
           { company: companyId },
           {
-            $set: { status: WA_CONNECTION_STATUS.EXPIRED, updatedBy: req.user!.id },
-            $push: {
-              history: {
-                $each: [{ event: 'expired', at: new Date() }],
-                $slice: -20,
-              },
+            $set: { 
+              status: WA_CONNECTION_STATUS.EXPIRED, 
+              qrCode: null, 
+              qrCodeRaw: null, 
+              updatedBy: toObjectId(req.user!.id) 
+            },
+            $push: { 
+              history: { 
+                $each: [{ event: 'expired', at: new Date() }], 
+                $slice: -20 
+              } 
             },
           }
         );
@@ -96,17 +386,18 @@ export default class WhatsAppConnectionController {
 
       res.json({
         data: {
-          status:       conn!.status,
-          phoneNumber:  conn!.phoneNumber  ?? null,
-          displayName:  conn!.displayName  ?? null,
-          connectedAt:  conn!.connectedAt  ?? null,
-          lastSeenAt:   conn!.lastSeenAt   ?? null,
-          qrCode:       conn!.qrCode       ?? null,
-          qrExpiresAt:  conn!.qrExpiresAt  ?? null,
-          qrValid:      conn!.qrExpiresAt ? new Date() < conn!.qrExpiresAt : false,
-          stats:        conn!.stats,
-          history:      conn!.history.slice(0, 5),
-          webhook:      conn!.webhook       ?? null,
+          status: conn!.status,
+          isConnected: inlineWaService.isConnected(companyId),
+          phoneNumber: conn!.phoneNumber ?? null,
+          displayName: conn!.displayName ?? null,
+          connectedAt: conn!.connectedAt ?? null,
+          lastSeenAt: conn!.lastSeenAt ?? null,
+          qrCode: conn!.qrCode ?? null,
+          qrExpiresAt: conn!.qrExpiresAt ?? null,
+          qrValid: conn!.qrExpiresAt ? new Date() < conn!.qrExpiresAt : false,
+          stats: conn!.stats,
+          history: conn!.history?.slice(0, 5) ?? [],
+          webhook: conn!.webhook ?? null,
         },
       });
     } catch (err: unknown) {
@@ -115,50 +406,50 @@ export default class WhatsAppConnectionController {
   }
 
   // ───────────────────────────────────────────────────────────────────────────
-  // POST /whatsapp-connection/generate-qr
-  // Generates a fresh QR code and transitions status → QR_PENDING.
+  // POST /generate-qr
   // ───────────────────────────────────────────────────────────────────────────
   async generateQR(req: AuthRequest, res: Response): Promise<void> {
     try {
       const companyId = resolveCompanyId(req);
       if (!companyId) { res.status(400).json({ message: 'Invalid company ID' }); return; }
 
-      // Guard: already connected
       const existing = await WhatsAppConnection.findOne({ company: companyId, isDeleted: false });
-      if (existing?.status === WA_CONNECTION_STATUS.CONNECTED) {
+      if (existing?.status === WA_CONNECTION_STATUS.CONNECTED && inlineWaService.isConnected(companyId)) {
         res.status(409).json({ message: 'Already connected. Disconnect first to re-link.' });
         return;
       }
 
-      const { qrCode, qrCodeRaw, expiresAt } = await generateQRCode(companyId);
+      let qrResolved = false;
 
-      const historyEntry = { event: 'qr_generated' as const, at: new Date(), triggeredBy: new mongoose.Types.ObjectId(req.user!.id) };
+      const qrPromise = new Promise<QRResult>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          if (!qrResolved) reject(new Error('QR generation timed out'));
+        }, 30_000);
 
-      const conn = await WhatsAppConnection.findOneAndUpdate(
-        { company: companyId, isDeleted: false },
-        {
-          $set: {
-            status:        WA_CONNECTION_STATUS.QR_PENDING,
-            qrCode,
-            qrCodeRaw,
-            qrGeneratedAt: new Date(),
-            qrExpiresAt:   expiresAt,
-            updatedBy:     new mongoose.Types.ObjectId(req.user!.id),
+        inlineWaService.initSession(
+          companyId,
+          req.user!.id,
+          (result) => {
+            if (!qrResolved) {
+              qrResolved = true;
+              clearTimeout(timeout);
+              resolve(result);
+            }
           },
-          $push: {
-            history: { $each: [historyEntry], $position: 0, $slice: 20 },
-          },
-        },
-        { new: true, upsert: true, setDefaultsOnInsert: true, select: '-sessionData' }
-      ).lean();
+          (_conn) => { console.log(`[WA] Company ${companyId} connected`); },
+          (reason) => { console.warn(`[WA] Company ${companyId} disconnected: ${reason}`); }
+        ).catch(reject);
+      });
+
+      const { qrCode, qrCodeRaw, expiresAt } = await qrPromise;
 
       res.json({
-        message: 'QR code generated successfully',
+        message: 'QR code generated. Scan within 5 minutes.',
         data: {
           qrCode,
           qrCodeRaw,
           qrExpiresAt: expiresAt,
-          expiresInSeconds: 90,
+          expiresInSeconds: 300,
           status: WA_CONNECTION_STATUS.QR_PENDING,
         },
       });
@@ -168,9 +459,27 @@ export default class WhatsAppConnectionController {
   }
 
   // ───────────────────────────────────────────────────────────────────────────
-  // POST /whatsapp-connection/confirm
-  // Called by your WA library webhook / event emitter when connection succeeds.
-  // Body: { phoneNumber, displayName, sessionData? }
+  // POST /refresh-qr
+  // ───────────────────────────────────────────────────────────────────────────
+  async refreshQR(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const companyId = resolveCompanyId(req);
+      if (!companyId) { res.status(400).json({ message: 'Invalid company ID' }); return; }
+
+      const existing = await WhatsAppConnection.findOne({ company: companyId, isDeleted: false });
+      if (existing?.status === WA_CONNECTION_STATUS.CONNECTED && inlineWaService.isConnected(companyId)) {
+        res.status(409).json({ message: 'Already connected. Disconnect before re-scanning.' });
+        return;
+      }
+
+      return this.generateQR(req, res);
+    } catch (err: unknown) {
+      res.status(500).json({ message: 'Failed to refresh QR', error: (err as Error).message });
+    }
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // POST /confirm
   // ───────────────────────────────────────────────────────────────────────────
   async confirmConnection(req: AuthRequest, res: Response): Promise<void> {
     try {
@@ -178,9 +487,7 @@ export default class WhatsAppConnectionController {
       if (!companyId) { res.status(400).json({ message: 'Invalid company ID' }); return; }
 
       const { phoneNumber, displayName, sessionData } = req.body as {
-        phoneNumber: string;
-        displayName?: string;
-        sessionData?: string;
+        phoneNumber: string; displayName?: string; sessionData?: string;
       };
 
       if (!phoneNumber?.trim()) {
@@ -188,24 +495,14 @@ export default class WhatsAppConnectionController {
       }
 
       const now = new Date();
-      const historyEntry = {
-        event:       'connected' as const,
-        at:          now,
-        triggeredBy: new mongoose.Types.ObjectId(req.user!.id),
-        meta:        { phoneNumber },
-      };
-
       const updatePayload: Record<string, unknown> = {
-        status:       WA_CONNECTION_STATUS.CONNECTED,
-        phoneNumber:  phoneNumber.trim(),
-        displayName:  displayName?.trim(),
-        connectedAt:  now,
-        lastSeenAt:   now,
-        // Clear QR after successful connect
-        qrCode:       null,
-        qrCodeRaw:    null,
-        qrExpiresAt:  null,
-        updatedBy:    new mongoose.Types.ObjectId(req.user!.id),
+        status: WA_CONNECTION_STATUS.CONNECTED,
+        phoneNumber: phoneNumber.trim(),
+        displayName: displayName?.trim(),
+        connectedAt: now,
+        lastSeenAt: now,
+        qrCode: null, qrCodeRaw: null, qrExpiresAt: null,
+        updatedBy: toObjectId(req.user!.id),
       };
       if (sessionData) updatePayload.sessionData = sessionData;
 
@@ -214,7 +511,10 @@ export default class WhatsAppConnectionController {
         {
           $set: updatePayload,
           $push: {
-            history: { $each: [historyEntry], $position: 0, $slice: 20 },
+            history: {
+              $each: [{ event: 'connected', at: now, triggeredBy: toObjectId(req.user!.id), meta: { phoneNumber } }],
+              $position: 0, $slice: 20,
+            },
           },
         },
         { new: true, select: '-sessionData' }
@@ -222,15 +522,17 @@ export default class WhatsAppConnectionController {
 
       if (!conn) { res.status(404).json({ message: 'Connection record not found' }); return; }
 
-      res.json({ message: 'WhatsApp connected successfully', data: { status: conn.status, phoneNumber: conn.phoneNumber, connectedAt: conn.connectedAt } });
+      res.json({
+        message: 'WhatsApp connected successfully',
+        data: { status: conn.status, phoneNumber: conn.phoneNumber, connectedAt: conn.connectedAt },
+      });
     } catch (err: unknown) {
       res.status(500).json({ message: 'Failed to confirm connection', error: (err as Error).message });
     }
   }
 
   // ───────────────────────────────────────────────────────────────────────────
-  // POST /whatsapp-connection/disconnect
-  // Manually disconnect. Body: { reason? }
+  // POST /disconnect
   // ───────────────────────────────────────────────────────────────────────────
   async disconnect(req: AuthRequest, res: Response): Promise<void> {
     try {
@@ -239,29 +541,25 @@ export default class WhatsAppConnectionController {
 
       const { reason = 'Manual disconnect' } = req.body as { reason?: string };
 
-      const now = new Date();
-      const historyEntry = {
-        event:       'disconnected' as const,
-        at:          now,
-        triggeredBy: new mongoose.Types.ObjectId(req.user!.id),
-        meta:        { reason },
-      };
+      await inlineWaService.closeSession(companyId, reason);
 
+      const now = new Date();
       const conn = await WhatsAppConnection.findOneAndUpdate(
         { company: companyId, isDeleted: false },
         {
           $set: {
-            status:           WA_CONNECTION_STATUS.DISCONNECTED,
-            disconnectedAt:   now,
+            status: WA_CONNECTION_STATUS.DISCONNECTED,
+            disconnectedAt: now,
             disconnectReason: reason,
-            qrCode:           null,
-            qrCodeRaw:        null,
-            qrExpiresAt:      null,
-            sessionData:      null,
-            updatedBy:        new mongoose.Types.ObjectId(req.user!.id),
+            qrCode: null, qrCodeRaw: null, qrExpiresAt: null,
+            sessionData: null,
+            updatedBy: toObjectId(req.user!.id),
           },
           $push: {
-            history: { $each: [historyEntry], $position: 0, $slice: 20 },
+            history: {
+              $each: [{ event: 'disconnected', at: now, triggeredBy: toObjectId(req.user!.id), meta: { reason } }],
+              $position: 0, $slice: 20,
+            },
           },
         },
         { new: true, select: '-sessionData' }
@@ -269,19 +567,14 @@ export default class WhatsAppConnectionController {
 
       if (!conn) { res.status(404).json({ message: 'Connection record not found' }); return; }
 
-      // TODO: Call your WA library to close the socket:
-      //   await waClientService.closeSession(companyId)
-
-      res.json({ message: 'WhatsApp disconnected', data: { status: conn.status } });
+      res.json({ message: 'WhatsApp disconnected', data: { status: conn.status, disconnectedAt: conn.disconnectedAt } });
     } catch (err: unknown) {
       res.status(500).json({ message: 'Failed to disconnect', error: (err as Error).message });
     }
   }
 
   // ───────────────────────────────────────────────────────────────────────────
-  // PATCH /whatsapp-connection/webhook
-  // Configure webhook for inbound message forwarding.
-  // Body: { url, secret?, events?, isActive? }
+  // PATCH /webhook
   // ───────────────────────────────────────────────────────────────────────────
   async updateWebhook(req: AuthRequest, res: Response): Promise<void> {
     try {
@@ -293,9 +586,9 @@ export default class WhatsAppConnectionController {
       };
 
       const setFields: Record<string, unknown> = { updatedBy: req.user!.id };
-      if (url      !== undefined) setFields['webhook.url']      = url;
-      if (secret   !== undefined) setFields['webhook.secret']   = secret;
-      if (events   !== undefined) setFields['webhook.events']   = events;
+      if (url !== undefined) setFields['webhook.url'] = url;
+      if (secret !== undefined) setFields['webhook.secret'] = secret;
+      if (events !== undefined) setFields['webhook.events'] = events;
       if (isActive !== undefined) setFields['webhook.isActive'] = isActive;
 
       const conn = await WhatsAppConnection.findOneAndUpdate(
@@ -311,9 +604,7 @@ export default class WhatsAppConnectionController {
   }
 
   // ───────────────────────────────────────────────────────────────────────────
-  // PATCH /whatsapp-connection/stats
-  // Called by background jobs to update rolling usage stats.
-  // Body: Partial<IUsageStats>
+  // PATCH /stats (SUPER_ADMIN only)
   // ───────────────────────────────────────────────────────────────────────────
   async updateStats(req: AuthRequest, res: Response): Promise<void> {
     try {
@@ -328,15 +619,12 @@ export default class WhatsAppConnectionController {
         totalMsgReceived: number; avgResponseMs: number;
       }>;
 
-      const setFields: Record<string, unknown> = {
-        'stats.lastUpdated': new Date(),
-        updatedBy: req.user!.id,
-      };
-      if (totalEnquiries   !== undefined) setFields['stats.totalEnquiries']   = totalEnquiries;
+      const setFields: Record<string, unknown> = { 'stats.lastUpdated': new Date(), updatedBy: req.user!.id };
+      if (totalEnquiries !== undefined) setFields['stats.totalEnquiries'] = totalEnquiries;
       if (totalSlotsBooked !== undefined) setFields['stats.totalSlotsBooked'] = totalSlotsBooked;
-      if (totalMsgSent     !== undefined) setFields['stats.totalMsgSent']     = totalMsgSent;
+      if (totalMsgSent !== undefined) setFields['stats.totalMsgSent'] = totalMsgSent;
       if (totalMsgReceived !== undefined) setFields['stats.totalMsgReceived'] = totalMsgReceived;
-      if (avgResponseMs    !== undefined) setFields['stats.avgResponseMs']    = avgResponseMs;
+      if (avgResponseMs !== undefined) setFields['stats.avgResponseMs'] = avgResponseMs;
 
       const conn = await WhatsAppConnection.findOneAndUpdate(
         { company: companyId, isDeleted: false },
@@ -352,8 +640,7 @@ export default class WhatsAppConnectionController {
   }
 
   // ───────────────────────────────────────────────────────────────────────────
-  // GET /whatsapp-connection/dashboard
-  // Aggregates connection stats + recent activity for the dashboard view.
+  // GET /dashboard
   // ───────────────────────────────────────────────────────────────────────────
   async getDashboard(req: AuthRequest, res: Response): Promise<void> {
     try {
@@ -365,67 +652,41 @@ export default class WhatsAppConnectionController {
         '-sessionData'
       ).lean();
 
-      // ── Mock/computed dashboard metrics ─────────────────────────────────────
-      // In production replace these with real aggregation queries across your
-      // Enquiry / Appointment collections.
-      const stats = conn?.stats ?? {};
+      const stats: any = conn?.stats ?? {};
 
-      const dashboard = {
-        connection: {
-          status:      conn?.status      ?? WA_CONNECTION_STATUS.DISCONNECTED,
-          phoneNumber: conn?.phoneNumber ?? null,
-          displayName: conn?.displayName ?? null,
-          connectedAt: conn?.connectedAt ?? null,
-          lastSeenAt:  conn?.lastSeenAt  ?? null,
-        },
-        metrics: {
-          totalEnquiries:   { value: stats.totalEnquiries   ?? 0, change: '+12%', up: true  },
-          totalSlotsBooked: { value: stats.totalSlotsBooked ?? 0, change: '+8%',  up: true  },
-          avgResponseMs:    {
-            value:  stats.avgResponseMs ?? 0,
-            label:  stats.avgResponseMs ? `${(stats.avgResponseMs / 60000).toFixed(1)}m` : '—',
-            change: '-15%',
-            up:     true,
+      res.json({
+        data: {
+          connection: {
+            status: conn?.status ?? WA_CONNECTION_STATUS.DISCONNECTED,
+            isLive: inlineWaService.isConnected(companyId),
+            phoneNumber: conn?.phoneNumber ?? null,
+            displayName: conn?.displayName ?? null,
+            connectedAt: conn?.connectedAt ?? null,
+            lastSeenAt: conn?.lastSeenAt ?? null,
           },
-          totalMsgSent:     { value: stats.totalMsgSent     ?? 0, change: '+5%', up: true },
-          totalMsgReceived: { value: stats.totalMsgReceived ?? 0, change: '+5%', up: true },
+          metrics: {
+            totalEnquiries: { value: stats.totalEnquiries ?? 0, change: '+12%', up: true },
+            totalSlotsBooked: { value: stats.totalSlotsBooked ?? 0, change: '+8%', up: true },
+            avgResponseMs: {
+              value: stats.avgResponseMs ?? 0,
+              label: stats.avgResponseMs ? `${(stats.avgResponseMs / 60000).toFixed(1)}m` : '—',
+              change: '-15%',
+              up: true,
+            },
+            totalMsgSent: { value: stats.totalMsgSent ?? 0, change: '+5%', up: true },
+            totalMsgReceived: { value: stats.totalMsgReceived ?? 0, change: '+5%', up: true },
+          },
+          recentHistory: (conn?.history ?? []).slice(0, 10),
+          webhook: conn?.webhook ?? null,
         },
-        recentHistory: (conn?.history ?? []).slice(0, 10),
-        webhook:       conn?.webhook ?? null,
-      };
-
-      res.json({ data: dashboard });
+      });
     } catch (err: unknown) {
       res.status(500).json({ message: 'Failed to get dashboard', error: (err as Error).message });
     }
   }
 
   // ───────────────────────────────────────────────────────────────────────────
-  // POST /whatsapp-connection/refresh-qr
-  // Refreshes an expired / stale QR without resetting everything.
-  // ───────────────────────────────────────────────────────────────────────────
-  async refreshQR(req: AuthRequest, res: Response): Promise<void> {
-    try {
-      const companyId = resolveCompanyId(req);
-      if (!companyId) { res.status(400).json({ message: 'Invalid company ID' }); return; }
-
-      const existing = await WhatsAppConnection.findOne({ company: companyId, isDeleted: false });
-      if (existing?.status === WA_CONNECTION_STATUS.CONNECTED) {
-        res.status(409).json({ message: 'Already connected. Disconnect before re-scanning.' });
-        return;
-      }
-
-      // Delegate to generateQR handler
-      return this.generateQR(req, res);
-    } catch (err: unknown) {
-      res.status(500).json({ message: 'Failed to refresh QR', error: (err as Error).message });
-    }
-  }
-
-  // ───────────────────────────────────────────────────────────────────────────
-  // GET /whatsapp-connection/history
-  // Returns the last N connection events for this company.
-  // Query: ?limit=20
+  // GET /history
   // ───────────────────────────────────────────────────────────────────────────
   async getHistory(req: AuthRequest, res: Response): Promise<void> {
     try {
@@ -444,4 +705,6 @@ export default class WhatsAppConnectionController {
       res.status(500).json({ message: 'Failed to get history', error: (err as Error).message });
     }
   }
+
+  
 }

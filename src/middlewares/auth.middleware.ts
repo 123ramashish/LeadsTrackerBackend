@@ -480,12 +480,12 @@ export const authenticate: RequestHandler = asyncHandler(
       res.status(401).json({ message: 'Session expired. Please log in again.' });
       return;
     }
-
+console.log("user", user)
     // 3️⃣ Issue new access token
     const newPayload: JwtPayload = {
       id: String(user._id),
       role: user.userRole,
-      companyId: user.company ? String(user.company) : undefined,
+      companyId: user.company ? String(user.company?._id) : undefined,
       isSuperAdmin: user.userRole === USER_ROLES.SUPER_ADMIN,
     };
 

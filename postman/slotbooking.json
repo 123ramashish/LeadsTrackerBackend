@@ -1,0 +1,913 @@
+{
+  "info": {
+    "name": "WhatsApp Slot Booking API",
+    "description": "Complete slot booking system — generate daily slots, book with patient details, manage lifecycle (block/unblock/cancel/delete). Base: localhost:5000/api/whatsappslotbooking",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "wa-slot-booking-v1"
+  },
+  "variable": [
+    { "key": "baseUrl",     "value": "http://localhost:5000/api/whatsappslotbooking", "type": "string" },
+    { "key": "bearerToken", "value": "",    "type": "string", "description": "JWT from login endpoint" },
+    { "key": "companyId",   "value": "",    "type": "string", "description": "Company ObjectId (SuperAdmin only)" },
+    { "key": "slotId",      "value": "",    "type": "string", "description": "Slot ObjectId — set after creating/fetching a slot" },
+    { "key": "today",       "value": "2026-04-04", "type": "string", "description": "Today YYYY-MM-DD" },
+    { "key": "tomorrow",    "value": "2026-04-05", "type": "string", "description": "Tomorrow YYYY-MM-DD" }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{bearerToken}}", "type": "string" }]
+  },
+  "item": [
+
+    {
+      "name": "📅 Read Slots",
+      "item": [
+
+        {
+          "name": "GET /  — Slots by date (today)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Has data array', () => pm.expect(json.data).to.be.an('array'));",
+                  "if (json.data.length > 0) {",
+                  "  pm.collectionVariables.set('slotId', json.data[0]._id);",
+                  "  console.log('Set slotId →', json.data[0]._id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}?date={{today}}",
+              "host": ["{{baseUrl}}"],
+              "query": [
+                { "key": "date",      "value": "{{today}}",     "description": "YYYY-MM-DD" },
+                { "key": "companyId", "value": "{{companyId}}", "description": "SuperAdmin only", "disabled": true }
+              ]
+            },
+            "description": "Returns all slots for the company on a given date, sorted by startTime. Auto-expires past available slots."
+          },
+          "response": [
+            {
+              "name": "200 — Slots found",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"data\": [\n    {\n      \"_id\": \"664a1b2c3d4e5f6789012345\",\n      \"company\": \"664a1b2c3d4e5f6789000001\",\n      \"date\": \"2026-04-04\",\n      \"startTime\": \"09:00\",\n      \"endTime\": \"10:00\",\n      \"durationMins\": 60,\n      \"status\": \"available\",\n      \"booking\": null,\n      \"isAvailable\": true,\n      \"createdAt\": \"2026-04-03T10:00:00.000Z\",\n      \"updatedAt\": \"2026-04-03T10:00:00.000Z\"\n    }\n  ]\n}"
+            }
+          ]
+        },
+
+        {
+          "name": "GET /  — Slots by date (tomorrow)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}?date={{tomorrow}}",
+              "host": ["{{baseUrl}}"],
+              "query": [
+                { "key": "date", "value": "{{tomorrow}}" }
+              ]
+            },
+            "description": "Same as above but for tomorrow — useful to preview next-day availability."
+          },
+          "response": []
+        },
+
+        {
+          "name": "GET /range — Slots for date range",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Has data array', () => pm.expect(json.data).to.be.an('array'));",
+                  "console.log('Total slots in range:', json.data.length);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/range?from={{today}}&to={{tomorrow}}",
+              "host": ["{{baseUrl}}", "range"],
+              "query": [
+                { "key": "from",      "value": "{{today}}",     "description": "Start date YYYY-MM-DD" },
+                { "key": "to",        "value": "{{tomorrow}}",  "description": "End date YYYY-MM-DD (max 31 days from from)" },
+                { "key": "status",    "value": "available",     "description": "Filter: available | booked | blocked | expired", "disabled": true },
+                { "key": "companyId", "value": "{{companyId}}", "description": "SuperAdmin only", "disabled": true }
+              ]
+            },
+            "description": "Returns all slots across a date range. Max 31 days. Great for calendar views. Filter by status optionally."
+          },
+          "response": [
+            {
+              "name": "200 — Range results",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"data\": [\n    { \"_id\": \"...\", \"date\": \"2026-04-04\", \"startTime\": \"09:00\", \"status\": \"available\" },\n    { \"_id\": \"...\", \"date\": \"2026-04-05\", \"startTime\": \"09:00\", \"status\": \"available\" }\n  ]\n}"
+            },
+            {
+              "name": "400 — Range > 31 days",
+              "status": "Bad Request",
+              "code": 400,
+              "body": "{ \"message\": \"Range cannot exceed 31 days\" }"
+            }
+          ]
+        },
+
+        {
+          "name": "GET /range — Only booked slots",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/range?from={{today}}&to={{tomorrow}}&status=booked",
+              "host": ["{{baseUrl}}", "range"],
+              "query": [
+                { "key": "from",   "value": "{{today}}" },
+                { "key": "to",     "value": "{{tomorrow}}" },
+                { "key": "status", "value": "booked" }
+              ]
+            },
+            "description": "Fetch only booked slots in range — useful for appointment list views."
+          },
+          "response": []
+        }
+
+      ]
+    },
+
+    {
+      "name": "🏗️ Create Slots",
+      "item": [
+
+        {
+          "name": "POST /bulk-generate — Default 1-hour slots (today)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test('Has inserted count', () => pm.expect(json.data.inserted).to.be.a('number'));",
+                  "console.log('Inserted:', json.data.inserted, '| Skipped:', json.data.skipped);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"date\": \"{{today}}\",\n  \"openTime\": \"09:00\",\n  \"closeTime\": \"18:00\",\n  \"durationMins\": 60\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/bulk-generate",
+              "host": ["{{baseUrl}}", "bulk-generate"]
+            },
+            "description": "Generates 1-hour slots from 09:00→18:00 = 9 slots. Idempotent — reruns skip existing slots. Roles: ADMIN, SUPER_ADMIN."
+          },
+          "response": [
+            {
+              "name": "201 — Slots generated",
+              "status": "Created",
+              "code": 201,
+              "body": "{\n  \"message\": \"Generated 9 slot(s). Skipped 0 duplicate(s).\",\n  \"data\": { \"inserted\": 9, \"skipped\": 0, \"total\": 9 }\n}"
+            },
+            {
+              "name": "201 — All skipped (already exists)",
+              "status": "Created",
+              "code": 201,
+              "body": "{\n  \"message\": \"Generated 0 slot(s). Skipped 9 duplicate(s).\",\n  \"data\": { \"inserted\": 0, \"skipped\": 9, \"total\": 9 }\n}"
+            }
+          ]
+        },
+
+        {
+          "name": "POST /bulk-generate — 30-min slots (tomorrow)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"date\": \"{{tomorrow}}\",\n  \"openTime\": \"10:00\",\n  \"closeTime\": \"17:00\",\n  \"durationMins\": 30\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/bulk-generate",
+              "host": ["{{baseUrl}}", "bulk-generate"]
+            },
+            "description": "30-minute slots 10:00→17:00 = 14 slots. Change durationMins to any value (15–480)."
+          },
+          "response": []
+        },
+
+        {
+          "name": "POST / — Single custom slot",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "if (json.data?._id) pm.collectionVariables.set('slotId', json.data._id);",
+                  "console.log('Created slotId →', json.data?._id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"date\": \"{{today}}\",\n  \"startTime\": \"19:00\",\n  \"durationMins\": 60\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}",
+              "host": ["{{baseUrl}}"]
+            },
+            "description": "Create a single ad-hoc slot at 19:00 for 60 minutes. endTime auto-calculated = 20:00. Returns 409 if slot at same time already exists."
+          },
+          "response": [
+            {
+              "name": "201 — Slot created",
+              "status": "Created",
+              "code": 201,
+              "body": "{\n  \"message\": \"Slot created\",\n  \"data\": {\n    \"_id\": \"664a1b2c3d4e5f6789012345\",\n    \"date\": \"2026-04-04\",\n    \"startTime\": \"19:00\",\n    \"endTime\": \"20:00\",\n    \"durationMins\": 60,\n    \"status\": \"available\"\n  }\n}"
+            },
+            {
+              "name": "409 — Duplicate time",
+              "status": "Conflict",
+              "code": 409,
+              "body": "{ \"message\": \"A slot at this time already exists for this date\" }"
+            }
+          ]
+        },
+
+        {
+          "name": "POST / — Single slot past midnight guard",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"date\": \"{{today}}\",\n  \"startTime\": \"23:30\",\n  \"durationMins\": 60\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}",
+              "host": ["{{baseUrl}}"]
+            },
+            "description": "Should return 400 — slot would extend past midnight (00:30)."
+          },
+          "response": [
+            {
+              "name": "400 — Past midnight",
+              "status": "Bad Request",
+              "code": 400,
+              "body": "{ \"message\": \"Slot cannot extend past midnight\" }"
+            }
+          ]
+        }
+
+      ]
+    },
+
+    {
+      "name": "📋 Book a Slot",
+      "item": [
+
+        {
+          "name": "POST /:slotId/book — WhatsApp booking",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Has confirmationId', () => pm.expect(json.data.confirmationId).to.match(/^BK-/));",
+                  "console.log('Confirmation:', json.data?.confirmationId);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"patientName\": \"Rahul Sharma\",\n  \"patientPhone\": \"+919876543210\",\n  \"patientEmail\": \"rahul@example.com\",\n  \"issue\": \"Back pain\",\n  \"notes\": \"Referred by Dr. Mehta\",\n  \"source\": \"whatsapp\",\n  \"whatsappJid\": \"919876543210@s.whatsapp.net\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/{{slotId}}/book",
+              "host": ["{{baseUrl}}", "{{slotId}}", "book"]
+            },
+            "description": "Books the slot atomically — only succeeds if status is 'available'. Returns 409 if already booked/blocked. confirmationId format: BK-XXXXX."
+          },
+          "response": [
+            {
+              "name": "200 — Booked",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"message\": \"Slot booked successfully\",\n  \"data\": {\n    \"slotId\": \"664a1b2c3d4e5f6789012345\",\n    \"date\": \"2026-04-04\",\n    \"startTime\": \"09:00\",\n    \"endTime\": \"10:00\",\n    \"confirmationId\": \"BK-A3X9K\",\n    \"patientName\": \"Rahul Sharma\",\n    \"patientPhone\": \"+919876543210\",\n    \"issue\": \"Back pain\"\n  }\n}"
+            },
+            {
+              "name": "409 — Already booked",
+              "status": "Conflict",
+              "code": 409,
+              "body": "{ \"message\": \"Slot is already booked. Choose a different time.\", \"status\": \"booked\" }"
+            }
+          ]
+        },
+
+        {
+          "name": "POST /:slotId/book — Manual booking (admin)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"patientName\": \"Priya Verma\",\n  \"patientPhone\": \"+911234567890\",\n  \"issue\": \"Fever\",\n  \"source\": \"manual\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/{{slotId}}/book",
+              "host": ["{{baseUrl}}", "{{slotId}}", "book"]
+            },
+            "description": "Admin manually books a slot — patientEmail, notes, whatsappJid are optional."
+          },
+          "response": []
+        },
+
+        {
+          "name": "POST /:slotId/book — Missing patientName (validation)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"patientPhone\": \"+919999999999\",\n  \"issue\": \"Checkup\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/{{slotId}}/book",
+              "host": ["{{baseUrl}}", "{{slotId}}", "book"]
+            },
+            "description": "Should return 400 — patientName is required."
+          },
+          "response": [
+            {
+              "name": "400 — Validation error",
+              "status": "Bad Request",
+              "code": 400,
+              "body": "{ \"message\": \"patientName is required\" }"
+            }
+          ]
+        }
+
+      ]
+    },
+
+    {
+      "name": "🔄 Booking Lifecycle",
+      "item": [
+
+        {
+          "name": "PATCH /:slotId/cancel — Cancel a booking",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Status is available', () => pm.expect(json.data.status).to.equal('available'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Patient requested cancellation via WhatsApp\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/{{slotId}}/cancel",
+              "host": ["{{baseUrl}}", "{{slotId}}", "cancel"]
+            },
+            "description": "Cancels a booked slot → status returns to 'available'. Booking details cleared. reason is optional."
+          },
+          "response": [
+            {
+              "name": "200 — Cancelled",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"message\": \"Booking cancelled. Slot is now available.\",\n  \"data\": { \"slotId\": \"...\", \"status\": \"available\" }\n}"
+            },
+            {
+              "name": "404 — Not a booked slot",
+              "status": "Not Found",
+              "code": 404,
+              "body": "{ \"message\": \"Booked slot not found\" }"
+            }
+          ]
+        },
+
+        {
+          "name": "PATCH /:slotId/block — Block slot (lunch break etc.)",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{slotId}}/block",
+              "host": ["{{baseUrl}}", "{{slotId}}", "block"]
+            },
+            "description": "Admin blocks an available slot — it becomes unbook-able. Roles: ADMIN, SUPER_ADMIN."
+          },
+          "response": [
+            {
+              "name": "200 — Blocked",
+              "status": "OK",
+              "code": 200,
+              "body": "{ \"message\": \"Slot blocked\", \"data\": { \"status\": \"blocked\" } }"
+            }
+          ]
+        },
+
+        {
+          "name": "PATCH /:slotId/unblock — Unblock slot",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{slotId}}/unblock",
+              "host": ["{{baseUrl}}", "{{slotId}}", "unblock"]
+            },
+            "description": "Returns a blocked slot back to available. Roles: ADMIN, SUPER_ADMIN."
+          },
+          "response": [
+            {
+              "name": "200 — Unblocked",
+              "status": "OK",
+              "code": 200,
+              "body": "{ \"message\": \"Slot unblocked\", \"data\": { \"status\": \"available\" } }"
+            }
+          ]
+        }
+
+      ]
+    },
+
+    {
+      "name": "✏️ Edit Slots",
+      "item": [
+
+        {
+          "name": "PATCH /:slotId — Update time",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('endTime recalculated', () => pm.expect(json.data.endTime).to.be.a('string'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"startTime\": \"09:30\",\n  \"durationMins\": 45\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/{{slotId}}",
+              "host": ["{{baseUrl}}", "{{slotId}}"]
+            },
+            "description": "Edits startTime and/or durationMins of an available/blocked slot. endTime auto-recalculated. Cannot edit a booked slot. Roles: ADMIN, SUPER_ADMIN."
+          },
+          "response": [
+            {
+              "name": "200 — Updated",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"message\": \"Slot updated\",\n  \"data\": {\n    \"startTime\": \"09:30\",\n    \"endTime\": \"10:15\",\n    \"durationMins\": 45\n  }\n}"
+            },
+            {
+              "name": "404 — Booked (cannot edit)",
+              "status": "Not Found",
+              "code": 404,
+              "body": "{ \"message\": \"Slot not found or already booked\" }"
+            }
+          ]
+        },
+
+        {
+          "name": "PATCH /:slotId — Update duration only",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"durationMins\": 90\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/{{slotId}}",
+              "host": ["{{baseUrl}}", "{{slotId}}"]
+            },
+            "description": "Change duration to 90 minutes — endTime auto-recalculated from existing startTime."
+          },
+          "response": []
+        }
+
+      ]
+    },
+
+    {
+      "name": "🗑️ Delete Slots",
+      "item": [
+
+        {
+          "name": "DELETE /:slotId — Delete single slot",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Deleted message', () => pm.expect(pm.response.json().message).to.include('deleted'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{slotId}}",
+              "host": ["{{baseUrl}}", "{{slotId}}"]
+            },
+            "description": "Soft-deletes a slot. Fails with 404 if slot is booked — cancel the booking first. Roles: ADMIN, SUPER_ADMIN."
+          },
+          "response": [
+            {
+              "name": "200 — Deleted",
+              "status": "OK",
+              "code": 200,
+              "body": "{ \"message\": \"Slot deleted\" }"
+            },
+            {
+              "name": "404 — Is booked",
+              "status": "Not Found",
+              "code": 404,
+              "body": "{ \"message\": \"Slot not found or is booked (cancel booking first)\" }"
+            }
+          ]
+        },
+
+        {
+          "name": "DELETE /bulk — Delete all available slots (today)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "console.log('Deleted count:', pm.response.json().data?.deleted);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/bulk?date={{today}}&status=available",
+              "host": ["{{baseUrl}}", "bulk"],
+              "query": [
+                { "key": "date",   "value": "{{today}}", "description": "YYYY-MM-DD — required" },
+                { "key": "status", "value": "available", "description": "available | blocked (never deletes booked)", "disabled": false }
+              ]
+            },
+            "description": "Bulk soft-delete all available slots on a date. Never deletes booked slots. Omit status param to delete both available AND blocked. Roles: ADMIN, SUPER_ADMIN."
+          },
+          "response": [
+            {
+              "name": "200 — Bulk deleted",
+              "status": "OK",
+              "code": 200,
+              "body": "{ \"message\": \"Deleted 9 slot(s)\", \"data\": { \"deleted\": 9 } }"
+            }
+          ]
+        },
+
+        {
+          "name": "DELETE /bulk — Delete all slots regardless of status",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/bulk?date={{tomorrow}}",
+              "host": ["{{baseUrl}}", "bulk"],
+              "query": [
+                { "key": "date", "value": "{{tomorrow}}" }
+              ]
+            },
+            "description": "Omit status param → deletes both available AND blocked slots. Still never deletes booked."
+          },
+          "response": []
+        }
+
+      ]
+    },
+
+    {
+      "name": "⚡ Happy Path Flow",
+      "description": "Run these in order to test the complete booking lifecycle end-to-end.",
+      "item": [
+
+        {
+          "name": "Step 1 — Bulk generate today's slots",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"date\": \"{{today}}\",\n  \"openTime\": \"09:00\",\n  \"closeTime\": \"18:00\",\n  \"durationMins\": 60\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/bulk-generate", "host": ["{{baseUrl}}", "bulk-generate"] }
+          },
+          "response": []
+        },
+
+        {
+          "name": "Step 2 — Get today's slots (grab first slotId)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "const available = json.data.find(s => s.status === 'available');",
+                  "if (available) {",
+                  "  pm.collectionVariables.set('slotId', available._id);",
+                  "  console.log('Using slotId:', available._id, '@', available.startTime);",
+                  "} else { console.warn('No available slots found'); }"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}?date={{today}}", "host": ["{{baseUrl}}"], "query": [{ "key": "date", "value": "{{today}}" }] }
+          },
+          "response": []
+        },
+
+        {
+          "name": "Step 3 — Book the slot (WhatsApp confirm)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Booked OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('confirmationId starts with BK-', () => pm.expect(json.data.confirmationId).to.match(/^BK-/));",
+                  "console.log('Confirmation ID:', json.data.confirmationId);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"patientName\": \"Anjali Singh\",\n  \"patientPhone\": \"+919988776655\",\n  \"issue\": \"Knee pain\",\n  \"source\": \"whatsapp\",\n  \"whatsappJid\": \"919988776655@s.whatsapp.net\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/{{slotId}}/book", "host": ["{{baseUrl}}", "{{slotId}}", "book"] }
+          },
+          "response": []
+        },
+
+        {
+          "name": "Step 4 — Try double-booking (expect 409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('409 Conflict on double-book', () => pm.response.to.have.status(409));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"patientName\": \"Another Patient\",\n  \"patientPhone\": \"+911111111111\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/{{slotId}}/book", "host": ["{{baseUrl}}", "{{slotId}}", "book"] }
+          },
+          "response": []
+        },
+
+        {
+          "name": "Step 5 — Cancel the booking",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Back to available', () => pm.expect(pm.response.json().data.status).to.equal('available'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{ \"reason\": \"Patient called to cancel\" }" },
+            "url": { "raw": "{{baseUrl}}/{{slotId}}/cancel", "host": ["{{baseUrl}}", "{{slotId}}", "cancel"] }
+          },
+          "response": []
+        },
+
+        {
+          "name": "Step 6 — Verify slot is available again",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "const slot = json.data.find(s => s._id === pm.collectionVariables.get('slotId'));",
+                  "pm.test('Slot is available again', () => pm.expect(slot?.status).to.equal('available'));",
+                  "pm.test('Booking is null', () => pm.expect(slot?.booking).to.be.null);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}?date={{today}}", "host": ["{{baseUrl}}"], "query": [{ "key": "date", "value": "{{today}}" }] }
+          },
+          "response": []
+        }
+
+      ]
+    },
+
+    {
+      "name": "❌ Error Cases",
+      "item": [
+
+        {
+          "name": "GET / — Missing date param",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": ["pm.test('400 Bad Request', () => pm.response.to.have.status(400));"],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}", "host": ["{{baseUrl}}"] },
+            "description": "No date param → 400."
+          },
+          "response": []
+        },
+
+        {
+          "name": "GET / — Invalid date format",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}?date=04-04-2026",
+              "host": ["{{baseUrl}}"],
+              "query": [{ "key": "date", "value": "04-04-2026" }]
+            },
+            "description": "Wrong format (DD-MM-YYYY) → 400."
+          },
+          "response": []
+        },
+
+        {
+          "name": "GET /range — from > to",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/range?from={{tomorrow}}&to={{today}}",
+              "host": ["{{baseUrl}}", "range"],
+              "query": [
+                { "key": "from", "value": "{{tomorrow}}" },
+                { "key": "to",   "value": "{{today}}" }
+              ]
+            },
+            "description": "from after to → 400."
+          },
+          "response": []
+        },
+
+        {
+          "name": "POST / — Invalid startTime",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"date\": \"{{today}}\",\n  \"startTime\": \"9:00\"\n}" },
+            "url": { "raw": "{{baseUrl}}", "host": ["{{baseUrl}}"] },
+            "description": "startTime must be HH:MM (zero-padded) → 400."
+          },
+          "response": []
+        },
+
+        {
+          "name": "POST /:slotId/book — Invalid slotId",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"patientName\": \"Test\",\n  \"patientPhone\": \"+911234567890\"\n}" },
+            "url": { "raw": "{{baseUrl}}/not-a-valid-id/book", "host": ["{{baseUrl}}", "not-a-valid-id", "book"] },
+            "description": "Non-ObjectId slotId → 400."
+          },
+          "response": []
+        },
+
+        {
+          "name": "DELETE /:slotId — Booked slot (must cancel first)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/{{slotId}}", "host": ["{{baseUrl}}", "{{slotId}}"] },
+            "description": "If slotId points to a booked slot → 404 with message to cancel first."
+          },
+          "response": [
+            {
+              "name": "404 — Booked, cannot delete",
+              "status": "Not Found",
+              "code": 404,
+              "body": "{ \"message\": \"Slot not found or is booked (cancel booking first)\" }"
+            }
+          ]
+        }
+
+      ]
+    }
+
+  ]
+}

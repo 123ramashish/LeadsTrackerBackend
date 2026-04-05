@@ -1,0 +1,458 @@
+{
+  "info": {
+    "name": "🏥 PhysioAI - Feedback API",
+    "description": "Feedback management API for clinic reviews, analytics, and QR submissions",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "feedback-api-v1"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5000/api/feedback",
+      "type": "string"
+    },
+    {
+      "key": "authToken",
+      "value": "",
+      "type": "string",
+      "description": "Bearer token from /auth/login"
+    },
+    {
+      "key": "companyId",
+      "value": "",
+      "type": "string",
+      "description": "Target company ID for feedback operations"
+    },
+    {
+      "key": "feedbackId",
+      "value": "",
+      "type": "string",
+      "description": "Feedback document ID"
+    }
+  ],
+  "item": [
+    {
+      "name": "🔐 Auth & Setup",
+      "item": [
+        {
+          "name": "🔑 Login (Get Token)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@clinic.com\",\n  \"password\": \"yourPassword123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/../auth/login",
+              "host": ["{{baseUrl}}", "..", "auth"],
+              "path": ["login"]
+            },
+            "description": "Authenticate and receive JWT token. Save token to {{authToken}} variable."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const res = pm.response.json();",
+                  "    if (res.token) {",
+                  "        pm.collectionVariables.set('authToken', res.token);",
+                  "        console.log('✅ Token saved to collection variable');",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "🏢 Get Company ID (Optional)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/../companies/me",
+              "host": ["{{baseUrl}}", "..", "companies"],
+              "path": ["me"]
+            },
+            "description": "Fetch authenticated user's company. Save _id to {{companyId}} variable."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const res = pm.response.json();",
+                  "    if (res.data?._id) {",
+                  "        pm.collectionVariables.set('companyId', res.data._id);",
+                  "        console.log('✅ Company ID saved:', res.data._id);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "📝 Public Endpoints",
+      "item": [
+        {
+          "name": "✅ Submit Feedback (Anonymous)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rating\": 5,\n  \"comment\": \"Excellent service! The staff was very professional and caring.\",\n  \"submitterName\": \"Riya Sharma\",\n  \"submitterPhone\": \"9876543210\",\n  \"submitterEmail\": \"riya@example.com\",\n  \"tags\": [\"staff\", \"cleanliness\", \"recommend\"],\n  \"inputMode\": \"text\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/submit/{{companyId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["submit", "{{companyId}}"]
+            },
+            "description": "Submit feedback without authentication. Used by QR code public form."
+          }
+        },
+        {
+          "name": "✅ Submit Feedback (Authenticated)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rating\": 4,\n  \"comment\": \"Good experience overall. Wait time could be improved.\",\n  \"tags\": [\"wait-time\", \"service\"],\n  \"inputMode\": \"text\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/submit/{{companyId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["submit", "{{companyId}}"]
+            },
+            "description": "Submit feedback as authenticated user. User details auto-populated from token."
+          }
+        },
+        {
+          "name": "✅ Submit Voice Feedback",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rating\": 3,\n  \"comment\": \"The consultation was okay but the billing process was confusing.\",\n  \"submitterName\": \"Amit Kumar\",\n  \"submitterPhone\": \"9123456789\",\n  \"inputMode\": \"voice\",\n  \"tags\": [\"billing\", \"consultation\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/submit/{{companyId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["submit", "{{companyId}}"]
+            },
+            "description": "Submit feedback with voice input mode flag."
+          }
+        }
+      ]
+    },
+    {
+      "name": "🔐 Protected: Read Operations",
+      "item": [
+        {
+          "name": "📊 Get Company Feedback (Paginated)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/?page=1&limit=10&sentiment=positive&status=new",
+              "host": ["{{baseUrl}}"],
+              "path": [""],
+              "query": [
+                { "key": "page", "value": "1", "description": "Page number (default: 1)" },
+                { "key": "limit", "value": "10", "description": "Items per page (max: 100)" },
+                { "key": "sentiment", "value": "positive", "description": "Filter: positive|neutral|negative" },
+                { "key": "status", "value": "new", "description": "Filter: new|reviewed|resolved|archived" },
+                { "key": "rating", "value": "5", "description": "Filter by exact rating (1-5)" },
+                { "key": "search", "value": "excellent", "description": "Search in comment/name/tags" },
+                { "key": "companyId", "value": "{{companyId}}", "description": "SuperAdmin only: target company" }
+              ]
+            },
+            "description": "Fetch paginated feedback list. Auto-scoped to user's company unless SuperAdmin."
+          }
+        },
+        {
+          "name": "📈 Get Feedback Analytics",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/analytics?days=30&companyId={{companyId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["analytics"],
+              "query": [
+                { "key": "days", "value": "30", "description": "Analysis period in days (default: 30)" },
+                { "key": "companyId", "value": "{{companyId}}", "description": "SuperAdmin only: target company" }
+              ]
+            },
+            "description": "Get aggregated analytics: avg rating, sentiment distribution, NPS, satisfaction rate."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const res = pm.response.json();",
+                  "    pm.test('Analytics has required fields', () => {",
+                  "        pm.expect(res).to.have.property('total');",
+                  "        pm.expect(res).to.have.property('avgRating');",
+                  "        pm.expect(res).to.have.property('positive');",
+                  "        pm.expect(res).to.have.property('negative');",
+                  "        pm.expect(res).to.have.property('satisfactionRate');",
+                  "    });",
+                  "    console.log(`📊 Total: ${res.total}, Avg Rating: ${res.avgRating}, NPS: ${Math.round(((res.positive - res.negative) / (res.total || 1)) * 100)}`);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "🔍 Get Single Feedback by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/{{feedbackId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{feedbackId}}"]
+            },
+            "description": "Fetch detailed feedback document with populated user/company data."
+          }
+        }
+      ]
+    },
+    {
+      "name": "🔐 Protected: Write Operations",
+      "item": [
+        {
+          "name": "✏️ Update Feedback Status",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"reviewed\",\n  \"adminNotes\": \"Followed up with patient. Issue resolved.\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/{{feedbackId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{feedbackId}}"]
+            },
+            "description": "Update feedback status and add admin notes. Requires ADMIN or SUPER_ADMIN role."
+          }
+        },
+        {
+          "name": "✏️ Update Status Only",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"resolved\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/{{feedbackId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{feedbackId}}"]
+            },
+            "description": "Quick status update without notes."
+          }
+        },
+        {
+          "name": "🗑️ Soft Delete Feedback (SuperAdmin Only)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/{{feedbackId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{feedbackId}}"]
+            },
+            "description": "Soft-delete feedback (sets isDeleted=true). Requires SUPER_ADMIN role."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    pm.test('Feedback deleted successfully', () => {",
+                  "        const res = pm.response.json();",
+                  "        pm.expect(res.message).to.include('deleted');",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "🧪 Test Scenarios",
+      "item": [
+        {
+          "name": "⚠️ Submit Invalid Rating",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rating\": 10,\n  \"comment\": \"This should fail\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/submit/{{companyId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["submit", "{{companyId}}"]
+            },
+            "description": "Test validation: rating must be 1-5"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Should return 400 for invalid rating', () => {",
+                  "    pm.response.to.have.status(400);",
+                  "    const res = pm.response.json();",
+                  "    pm.expect(res.message).to.include('Rating');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "⚠️ Submit to Inactive Company",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rating\": 5,\n  \"comment\": \"Testing inactive company\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/submit/507f1f77bcf86cd799439011",
+              "host": ["{{baseUrl}}"],
+              "path": ["submit", "507f1f77bcf86cd799439011"]
+            },
+            "description": "Test: feedback submission to non-existent/inactive company"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Should return 404 for invalid company', () => {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "⚠️ Unauthorized Access to Feedback",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/",
+              "host": ["{{baseUrl}}"],
+              "path": [""]
+            },
+            "description": "Test: accessing protected endpoint without token"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Should return 401 without auth', () => {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "✅ Filter by Sentiment & Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{authToken}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/?sentiment=negative&status=new&limit=5",
+              "host": ["{{baseUrl}}"],
+              "path": [""],
+              "query": [
+                { "key": "sentiment", "value": "negative" },
+                { "key": "status", "value": "new" },
+                { "key": "limit", "value": "5" }
+              ]
+            },
+            "description": "Test combined filters: negative + new feedback"
+          }
+        }
+      ]
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{authToken}}",
+        "type": "string"
+      }
+    ]
+  }
+}

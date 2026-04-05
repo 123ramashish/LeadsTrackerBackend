@@ -1,5 +1,5 @@
 import { Schema, model, Document, Types } from 'mongoose';
-import { Channel } from '../../types';
+import { Channel } from '../../../types';
 
 export interface ITemplate extends Document {
   name: string;

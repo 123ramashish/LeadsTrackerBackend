@@ -1,8 +1,8 @@
 // src/controllers/templateController.ts
 import { Request, Response, NextFunction } from 'express';
-import { Template } from '../DataBase/Schema/template.schema.js';
 import { AppError } from '../middlewares/errorHandler.js';
 import type { ApiResponse, Channel, PaginationQuery } from '../types/index.js';
+import { Template } from '../DataBase/Schema/clinivo/template.schema.js';
 
 // ── GET /templates ────────────────────────────────────────────────────────
 export const getTemplates = async (

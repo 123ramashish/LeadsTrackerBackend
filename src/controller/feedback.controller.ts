@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import mongoose from 'mongoose';
-import Feedback, { IFeedback, FEEDBACK_STATUS, FEEDBACK_SENTIMENT } from '../DataBase/Schema/clinivo/feedback.schema';
+import Feedback, { IFeedback, FEEDBACK_STATUS, FEEDBACK_SENTIMENT, FeedbackStatus } from '../DataBase/Schema/clinivo/feedback.schema';
 import User, { USER_ROLES, IUser } from '../DataBase/Schema/user.schema';
 import Company from '../DataBase/Schema/company.schema';
 
@@ -23,10 +23,9 @@ const sanitizeSubmitterData = (data: Partial<IFeedback>) => {
 export default class FeedbackController {
   // ─── SUBMIT FEEDBACK (Public or Authenticated) ─────────────────────────────
   async submitFeedback(req: Request, res: Response) {
-    console.log("api calljjh")
     try {
+      const companyId = req.params.companyId as string;
       const {
-        companyId,
         rating,
         comment,
         submitterName,
@@ -37,7 +36,7 @@ export default class FeedbackController {
       } =  req.body;
 console.log("api call",req.body)
       // Validation
-      if (!companyId) {
+      if (!companyId || Array.isArray(companyId)) {
        return res.status(400).json({ message: 'Valid companyId is required' });
       }
       if (!rating || rating < 1 || rating > 5) {
@@ -68,7 +67,7 @@ console.log("api call",req.body)
         ...sanitizeSubmitterData({ submitterName, submitterPhone, submitterEmail }),
       };
 
-      // Attach authenticated user if present
+      // Attach authenticated user if present 
       const authUser = (req as any).user;
       if (authUser?.id) {
         feedbackData.user = new mongoose.Types.ObjectId(authUser.id) as any;
@@ -376,4 +375,88 @@ console.log("api call",req.body)
       res.status(500).json({ message: 'Failed to delete feedback', error: msg });
     }
   }
+
+  async changeFeedbackStatus(req: Request, res: Response): Promise<void> {
+  try {
+    const { id } = req.params as any;
+    const { status, adminNotes } = req.body;
+    const authUser = (req as any).user as { id: string; role: string; companyId?: string };
+
+    // Validate ID
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      res.status(400).json({ message: 'Invalid feedback ID' });
+      return;
+    }
+
+    // Validate status value
+    if (!status || !(Object.values(FEEDBACK_STATUS) as string[]).includes(status)) {
+      res.status(400).json({ 
+        message: 'Invalid status', 
+        allowed: Object.values(FEEDBACK_STATUS) 
+      });
+      return;
+    }
+
+    // Find feedback with company for authorization check
+    const feedback = await Feedback.findOne({ _id: id, isDeleted: false })
+      .select('company status');
+    
+    if (!feedback) {
+      res.status(404).json({ message: 'Feedback not found' });
+      return;
+    }
+
+    // Authorization: SuperAdmin can update any, others only their company
+    if (authUser.role !== USER_ROLES.SUPER_ADMIN) {
+      if (!authUser.companyId || feedback.company.toString() !== authUser.companyId) {
+        res.status(403).json({ message: 'Access denied: Cannot modify feedback from other companies' });
+        return;
+      }
+    }
+
+    // Build update object
+    const update: Partial<IFeedback> = {
+      status: status as FeedbackStatus,
+    };
+
+    // Add admin notes if provided
+    if (adminNotes !== undefined && adminNotes !== null) {
+      update.adminNotes = `${feedback.adminNotes || ''}\n[${new Date().toISOString()}] ${adminNotes.trim().slice(0, 500)}`.trim();
+    }
+
+    // Add reviewedBy/reviewedAt if status is changing to reviewed/resolved
+    if (['reviewed', 'resolved', 'google_uploaded'].includes(status)) {
+      update.reviewedBy = new mongoose.Types.ObjectId(authUser.id) as any;
+      update.reviewedAt = new Date();
+    }
+
+    // Perform update
+    const updatedFeedback = await Feedback.findOneAndUpdate(
+      { _id: id, isDeleted: false },
+      { $set: update },
+      { new: true, runValidators: true }
+    )
+    .populate('user', 'name email')
+    .populate('reviewedBy', 'name')
+    .select('-__v')
+    .lean();
+
+    if (!updatedFeedback) {
+      res.status(404).json({ message: 'Feedback not found' });
+      return;
+    }
+
+    res.json({ 
+      message: 'Feedback status updated successfully', 
+      data: updatedFeedback,
+      previousStatus: feedback.status,
+      newStatus: status 
+    });
+
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    console.error('[changeFeedbackStatus]', error);
+    res.status(500).json({ message: 'Failed to update feedback status', error: msg });
+  }
+}
 }

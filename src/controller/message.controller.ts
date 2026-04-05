@@ -8,9 +8,10 @@ import type {
   FollowUpStatus,
   MessageFilterQuery,
 } from '../types/index.js';
-import { Message } from '../DataBase/Schema/message.schema.js';
-import { Template } from '../DataBase/Schema/template.schema.js';
+
 import { AppError } from '../middlewares/errorHandler.js';
+import { Message } from '../DataBase/Schema/clinivo/message.schema.js';
+import { Template } from '../DataBase/Schema/clinivo/template.schema.js';
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
 const needsAutoFollowUpFilter = () => {
